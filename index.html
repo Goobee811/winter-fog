@@ -758,6 +758,12 @@
         }
       }
 
+      svg.labels-visible .node-label {
+        display: block !important; /* Dùng !important để ghi đè quy tắc display:none trong media query */
+        font-size: 9px;
+        font-weight: 700;
+      }
+
       /* RESPONSIVE STYLES */
       @media (max-width: 768px) {
         #mobile-menu-toggle {
@@ -2947,7 +2953,22 @@
       const zoom = d3
         .zoom()
         .scaleExtent([0.2, 3])
-        .on("zoom", (event) => g.attr("transform", event.transform));
+        .on("zoom", (event) => {
+          // Dòng này phải có
+          g.attr("transform", event.transform);
+
+          // Toàn bộ logic này phải nằm BÊN TRONG hàm .on("zoom", ...)
+          if (isMobile) {
+            const zoomLevel = event.transform.k; // Lấy mức độ zoom
+            const visibilityThreshold = 1.5; // Ngưỡng để hiện label
+
+            if (zoomLevel > visibilityThreshold) {
+              svg.classed("labels-visible", true); // Thêm class
+            } else {
+              svg.classed("labels-visible", false); // Xóa class
+            }
+          }
+        });
 
       svg.call(zoom);
 
