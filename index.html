@@ -1,0 +1,3791 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Thinking Architecture - Interactive Network Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(
+          135deg,
+          #0f0c29 0%,
+          #302b63 50%,
+          #24243e 100%
+        );
+        overflow: hidden;
+        color: #fff;
+        touch-action: none;
+      }
+
+      #container {
+        display: flex;
+        height: 100vh;
+        position: relative;
+      }
+
+      #graph-container {
+        flex: 1;
+        position: relative;
+        background: radial-gradient(
+          circle at center,
+          rgba(99, 102, 241, 0.05) 0%,
+          transparent 70%
+        );
+      }
+
+      svg {
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+      }
+
+      svg.grabbing {
+        cursor: grabbing;
+      }
+
+      /* Mobile Menu Toggle */
+      #mobile-menu-toggle {
+        display: none;
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 2001;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: 8px;
+        padding: 8px;
+        color: #e0e7ff;
+        font-size: 20px;
+        cursor: pointer;
+      }
+
+      #mobile-panel-toggle {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 2001;
+        background: rgba(99, 102, 241, 0.9);
+        border: 1px solid rgba(99, 102, 241, 0.5);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        color: #fff;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Node Styles */
+      .node {
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .node:hover {
+        filter: brightness(1.3) drop-shadow(0 0 20px rgba(255, 255, 255, 0.5));
+      }
+
+      .node-circle {
+        stroke-width: 3;
+        transition: all 0.3s ease;
+      }
+
+      .node-label {
+        font-size: 12px;
+        font-weight: 600;
+        fill: #fff;
+        text-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .node-sublabel {
+        font-size: 10px;
+        font-weight: 400;
+        fill: #b8bcc8;
+        text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+      }
+
+      /* Edge Styles */
+      .edge {
+        fill: none;
+        transition: all 0.3s ease;
+      }
+
+      .edge:hover {
+        filter: brightness(1.5) drop-shadow(0 0 10px currentColor);
+      }
+
+      .edge-strong {
+        stroke-width: 3;
+        stroke-dasharray: none;
+        opacity: 0.9;
+      }
+
+      .edge-moderate {
+        stroke-width: 2;
+        stroke-dasharray: 5, 3;
+        opacity: 0.7;
+      }
+
+      .edge-weak {
+        stroke-width: 1;
+        stroke-dasharray: 2, 4;
+        opacity: 0.5;
+      }
+
+      .edge-hit {
+        cursor: pointer;
+        transition: stroke-width 0.2s;
+      }
+
+      .edge-hit:hover + .edge {
+        filter: brightness(1.5) drop-shadow(0 0 15px currentColor);
+        stroke-width: 5;
+      }
+
+      .edge-label {
+        font-size: 10px;
+        fill: #64748b;
+        text-anchor: middle;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+
+      .edge:hover + .edge-label {
+        opacity: 1;
+      }
+
+      .arrowhead {
+        fill: currentColor;
+      }
+
+      /* Info Panel */
+      #info-panel {
+        width: 400px;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        border-left: 1px solid rgba(99, 102, 241, 0.3);
+        padding: 20px;
+        overflow-y: auto;
+        transition: transform 0.3s ease;
+        position: relative;
+        z-index: 1500;
+      }
+
+      #info-panel.hidden {
+        transform: translateX(100%);
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+      }
+
+      .panel-title {
+        font-size: 24px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .close-btn {
+        background: none;
+        border: none;
+        color: #64748b;
+        font-size: 24px;
+        cursor: pointer;
+        transition: color 0.3s;
+        padding: 5px;
+      }
+
+      .close-btn:hover {
+        color: #e11d48;
+      }
+
+      .info-section {
+        margin-bottom: 25px;
+      }
+
+      .section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #a78bfa;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .section-content {
+        background: rgba(30, 41, 59, 0.5);
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+      }
+
+      .domain-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+
+      .stat-item {
+        background: rgba(99, 102, 241, 0.1);
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+      }
+
+      .stat-label {
+        font-size: 11px;
+        color: #94a3b8;
+        margin-bottom: 5px;
+      }
+
+      .stat-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #e0e7ff;
+      }
+
+      .group-container {
+        margin-bottom: 15px;
+      }
+
+      .group-header {
+        background: linear-gradient(
+          90deg,
+          rgba(99, 102, 241, 0.2) 0%,
+          transparent 100%
+        );
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .group-header:hover {
+        background: linear-gradient(
+          90deg,
+          rgba(99, 102, 241, 0.3) 0%,
+          transparent 100%
+        );
+      }
+
+      .group-name {
+        font-weight: 600;
+        color: #c7d2fe;
+        margin-bottom: 3px;
+      }
+
+      .group-name-vi {
+        font-size: 12px;
+        color: #94a3b8;
+        font-style: italic;
+      }
+
+      .group-description {
+        font-size: 12px;
+        color: #cbd5e1;
+        line-height: 1.5;
+        margin-top: 8px;
+      }
+
+      .concepts-list {
+        margin-top: 10px;
+        padding-left: 20px;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+      }
+
+      .concepts-list.expanded {
+        max-height: 300px;
+      }
+
+      .layout-btn {
+        padding: 5px 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        background: rgba(99, 102, 241, 0.1);
+        color: #e0e7ff;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.3s;
+      }
+
+      .layout-btn:hover {
+        background: rgba(99, 102, 241, 0.2);
+      }
+
+      .layout-btn.active {
+        background: rgba(99, 102, 241, 0.4);
+        border-color: #6366f1;
+      }
+
+      .clickable-item {
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .clickable-item:hover {
+        background: rgba(99, 102, 241, 0.2) !important;
+        transform: translateX(2px);
+      }
+
+      .cluster-item {
+        cursor: pointer;
+        padding: 8px;
+        margin-top: 8px;
+        background: rgba(99, 102, 241, 0.1);
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+
+      .cluster-item:hover {
+        background: rgba(99, 102, 241, 0.3);
+        transform: translateX(2px);
+      }
+
+      .connection-item {
+        cursor: pointer;
+        margin-bottom: 6px;
+        padding: 6px;
+        background: rgba(99, 102, 241, 0.05);
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+
+      .connection-item:hover {
+        background: rgba(99, 102, 241, 0.2);
+        transform: translateX(2px);
+      }
+
+      .concept-item {
+        font-size: 11px;
+        color: #94a3b8;
+        padding: 3px 8px;
+        border-left: 2px solid rgba(99, 102, 241, 0.3);
+        padding-left: 10px;
+        margin-bottom: 3px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .concept-item:hover {
+        background: rgba(99, 102, 241, 0.1);
+        color: #c7d2fe;
+        padding-left: 12px;
+      }
+
+      .connection-details {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        margin-top: 8px;
+        padding: 0;
+      }
+
+      .connection-details.expanded {
+        max-height: 500px;
+        padding: 10px;
+        background: rgba(30, 41, 59, 0.5);
+        border-radius: 4px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+      }
+
+      .expand-toggle {
+        font-size: 10px;
+        color: #6366f1;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .expand-toggle:hover {
+        color: #818cf8;
+      }
+
+      .connection-header {
+        cursor: pointer;
+      }
+
+      .sep-btn {
+        padding: 5px 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        background: rgba(99, 102, 241, 0.1);
+        color: #e0e7ff;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.3s;
+      }
+
+      .sep-btn:hover {
+        background: rgba(99, 102, 241, 0.2);
+      }
+
+      .sep-btn.active {
+        background: rgba(99, 102, 241, 0.4);
+        border-color: #6366f1;
+      }
+
+      /* Edge Selector Panel */
+      #edge-selector {
+        position: absolute;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        max-width: 300px;
+        z-index: 3000;
+        display: none;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+
+      #edge-selector h3 {
+        font-size: 12px;
+        color: #a78bfa;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+
+      .edge-option {
+        padding: 8px;
+        margin-bottom: 5px;
+        background: rgba(99, 102, 241, 0.1);
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 11px;
+      }
+
+      .edge-option:hover {
+        background: rgba(99, 102, 241, 0.3);
+        transform: translateX(3px);
+      }
+
+      .edge-option-direction {
+        color: #e0e7ff;
+        font-weight: 600;
+        margin-bottom: 3px;
+      }
+
+      .edge-option-label {
+        color: #94a3b8;
+        font-size: 10px;
+      }
+
+      .edge-option-strength {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 9px;
+        margin-top: 3px;
+      }
+
+      .highlighted-element {
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          filter: brightness(1);
+        }
+        50% {
+          filter: brightness(1.5) drop-shadow(0 0 20px currentColor);
+        }
+        100% {
+          filter: brightness(1);
+        }
+      }
+
+      .interaction-info {
+        background: rgba(30, 41, 59, 0.5);
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+      }
+
+      .interaction-direction {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+        padding: 10px;
+        background: rgba(99, 102, 241, 0.1);
+        border-radius: 6px;
+      }
+
+      .domain-tag {
+        padding: 4px 8px;
+        background: rgba(99, 102, 241, 0.2);
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .arrow-icon {
+        color: #a78bfa;
+        font-size: 20px;
+      }
+
+      .strength-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 10px;
+      }
+
+      .strength-strong {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      }
+
+      .strength-moderate {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      }
+
+      .strength-weak {
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      }
+
+      /* Controls */
+      #controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(15, 23, 42, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        z-index: 1000;
+        transition: transform 0.3s ease;
+      }
+
+      #controls.mobile-hidden {
+        transform: translateX(-120%);
+      }
+
+      .control-group {
+        margin-bottom: 15px;
+      }
+
+      .control-label {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-bottom: 5px;
+        display: block;
+      }
+
+      .filter-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+
+      .filter-btn {
+        padding: 5px 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        background: rgba(99, 102, 241, 0.1);
+        color: #e0e7ff;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.3s;
+      }
+
+      .filter-btn:hover {
+        background: rgba(99, 102, 241, 0.2);
+      }
+
+      .filter-btn.active {
+        background: rgba(99, 102, 241, 0.4);
+        border-color: #6366f1;
+      }
+
+      #zoom-controls {
+        display: flex;
+        gap: 5px;
+      }
+
+      .zoom-btn {
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        background: rgba(99, 102, 241, 0.1);
+        color: #e0e7ff;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .zoom-btn:hover {
+        background: rgba(99, 102, 241, 0.3);
+      }
+
+      /* Legend */
+      #legend {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(15, 23, 42, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        transition: transform 0.3s ease;
+      }
+
+      #legend.mobile-hidden {
+        transform: translateY(120%);
+      }
+
+      .legend-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #a78bfa;
+        margin-bottom: 10px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        color: #cbd5e1;
+      }
+
+      .legend-line {
+        width: 30px;
+        height: 2px;
+      }
+
+      /* Highlight Indicator */
+      #highlight-indicator {
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        animation: slideIn 0.3s ease;
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateY(-20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      /* Tooltip */
+      .tooltip {
+        position: absolute;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        font-size: 12px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+        z-index: 2000;
+        max-width: 250px;
+      }
+
+      .tooltip.show {
+        opacity: 1;
+      }
+
+      /* Loading */
+      #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 3px solid rgba(99, 102, 241, 0.2);
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* RESPONSIVE STYLES */
+      @media (max-width: 768px) {
+        #mobile-menu-toggle {
+          display: block;
+        }
+
+        #mobile-panel-toggle {
+          display: flex;
+        }
+
+        #controls {
+          width: 280px;
+          max-width: 80vw;
+          top: 60px;
+          left: 10px;
+          max-height: calc(100vh - 150px);
+          overflow-y: auto;
+        }
+
+        #legend {
+          display: none;
+        }
+
+        #info-panel {
+          position: fixed;
+          width: 100%;
+          height: 70vh;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          border-left: none;
+          border-top: 2px solid rgba(99, 102, 241, 0.3);
+          border-radius: 20px 20px 0 0;
+          z-index: 1999;
+          padding: 15px;
+        }
+
+        #info-panel.hidden {
+          transform: translateY(100%);
+        }
+
+        .panel-title {
+          font-size: 20px;
+        }
+
+        .node-label {
+          font-size: 10px;
+        }
+
+        .node-sublabel {
+          font-size: 8px;
+        }
+
+        .filter-buttons {
+          flex-direction: column;
+        }
+
+        .filter-btn,
+        .layout-btn,
+        .sep-btn {
+          width: 100%;
+          text-align: center;
+        }
+
+        #edge-selector {
+          left: 50% !important;
+          transform: translateX(-50%);
+          width: 90%;
+          max-width: 90%;
+        }
+
+        #highlight-indicator {
+          top: 60px !important;
+          right: 10px !important;
+          font-size: 10px;
+          padding: 6px 12px;
+        }
+
+        .domain-stats {
+          grid-template-columns: 1fr;
+        }
+
+        .control-group {
+          margin-bottom: 12px;
+        }
+
+        #zoom-controls {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 5px;
+        }
+
+        .zoom-btn {
+          width: 100%;
+          height: 35px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        #info-panel {
+          height: 80vh;
+        }
+
+        .panel-header {
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+        }
+
+        .info-section {
+          margin-bottom: 15px;
+        }
+
+        .section-title {
+          font-size: 12px;
+        }
+
+        .section-content {
+          padding: 10px;
+        }
+
+        #controls {
+          padding: 12px;
+          font-size: 11px;
+        }
+
+        .node-label {
+          display: none;
+        }
+
+        .node-sublabel {
+          display: none;
+        }
+      }
+
+      /* Touch-specific styles */
+      @media (pointer: coarse) {
+        .edge-hit {
+          stroke-width: 30;
+        }
+
+        .node {
+          cursor: default;
+        }
+
+        .clickable-item,
+        .cluster-item,
+        .connection-item,
+        .concept-item {
+          padding: 10px;
+          margin-bottom: 8px;
+        }
+
+        .group-header {
+          padding: 12px;
+        }
+
+        .filter-btn,
+        .layout-btn,
+        .sep-btn,
+        .zoom-btn {
+          padding: 8px 12px;
+          min-height: 40px;
+        }
+      }
+
+      /* Panel drag handle for mobile */
+      .panel-drag-handle {
+        display: none;
+        width: 50px;
+        height: 4px;
+        background: rgba(99, 102, 241, 0.5);
+        border-radius: 2px;
+        margin: 10px auto 15px;
+        cursor: grab;
+      }
+
+      @media (max-width: 768px) {
+        .panel-drag-handle {
+          display: block;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Mobile Menu Toggle -->
+    <button id="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
+
+    <!-- Mobile Panel Toggle -->
+    <button id="mobile-panel-toggle" onclick="toggleMobilePanel()">ℹ</button>
+
+    <div id="container">
+      <div id="graph-container">
+        <div
+          id="highlight-indicator"
+          style="
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(99, 102, 241, 0.9);
+            padding: 8px 15px;
+            border-radius: 20px;
+            color: white;
+            font-size: 12px;
+            display: none;
+            z-index: 1000;
+          "
+        >
+          <span id="highlight-text"></span>
+          <button
+            onclick="resetHighlight()"
+            style="
+              margin-left: 10px;
+              background: none;
+              border: none;
+              color: white;
+              cursor: pointer;
+              font-size: 14px;
+            "
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Edge Selector Panel for overlapping edges -->
+        <div id="edge-selector">
+          <h3>Select Connection</h3>
+          <div id="edge-options"></div>
+          <button
+            onclick="closeEdgeSelector()"
+            style="
+              width: 100%;
+              margin-top: 10px;
+              padding: 6px;
+              background: rgba(99, 102, 241, 0.2);
+              border: 1px solid rgba(99, 102, 241, 0.3);
+              border-radius: 5px;
+              color: #e0e7ff;
+              cursor: pointer;
+              font-size: 11px;
+              min-height: 35px;
+            "
+          >
+            Close
+          </button>
+        </div>
+
+        <div id="controls">
+          <div
+            style="
+              font-size: 10px;
+              color: #6366f1;
+              margin-bottom: 10px;
+              text-align: center;
+            "
+          >
+            💡 Click items in right panel to highlight<br />
+            🎯 Use Edge Selector for overlapping connections
+          </div>
+          <div class="control-group">
+            <label class="control-label">Layout Mode</label>
+            <div class="filter-buttons">
+              <button
+                class="layout-btn active"
+                data-layout="force"
+                title="Dynamic force-directed layout"
+              >
+                Force
+              </button>
+              <button
+                class="layout-btn"
+                data-layout="hierarchical"
+                title="Layered by hierarchy"
+              >
+                Hierarchical
+              </button>
+              <button
+                class="layout-btn"
+                data-layout="circular"
+                title="Arranged in circle"
+              >
+                Circular
+              </button>
+              <button
+                class="layout-btn"
+                data-layout="grid"
+                title="Uniform grid layout"
+              >
+                Grid
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label">Edge Separation</label>
+            <div class="filter-buttons">
+              <button
+                class="sep-btn active"
+                data-separation="normal"
+                title="Normal separation"
+              >
+                Normal
+              </button>
+              <button
+                class="sep-btn"
+                data-separation="wide"
+                title="Wide separation for easier clicking"
+              >
+                Wide
+              </button>
+              <button
+                class="sep-btn"
+                data-separation="extra"
+                title="Extra wide separation"
+              >
+                Extra
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label">Search Node</label>
+            <input
+              type="text"
+              id="node-search"
+              placeholder="Type domain name..."
+              style="
+                width: 100%;
+                padding: 5px 8px;
+                background: rgba(99, 102, 241, 0.1);
+                border: 1px solid rgba(99, 102, 241, 0.3);
+                border-radius: 5px;
+                color: #e0e7ff;
+                font-size: 12px;
+                margin-bottom: 10px;
+                min-height: 35px;
+              "
+              onkeyup="searchNode(this.value)"
+            />
+          </div>
+          <div class="control-group">
+            <label class="control-label">Filter Interactions</label>
+            <div class="filter-buttons">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="strong">Strong</button>
+              <button class="filter-btn" data-filter="moderate">
+                Moderate
+              </button>
+              <button class="filter-btn" data-filter="weak">Weak</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label">Zoom</label>
+            <div id="zoom-controls">
+              <button class="zoom-btn" id="zoom-in">+</button>
+              <button class="zoom-btn" id="zoom-out">-</button>
+              <button class="zoom-btn" id="zoom-reset">⟲</button>
+              <button
+                class="zoom-btn"
+                id="zoom-fix"
+                title="Fix/Unfix positions"
+              >
+                📌
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="legend">
+          <div class="legend-title">INTERACTION STRENGTH</div>
+          <div class="legend-item">
+            <div
+              class="legend-line"
+              style="background: #10b981; height: 3px"
+            ></div>
+            <span>Strong (Natural & Constant) - 30</span>
+          </div>
+          <div class="legend-item">
+            <div
+              class="legend-line"
+              style="
+                background: #f59e0b;
+                height: 2px;
+                border-top: 2px dashed #f59e0b;
+              "
+            ></div>
+            <span>Moderate (Regular) - 20</span>
+          </div>
+          <div class="legend-item">
+            <div
+              class="legend-line"
+              style="
+                background: #8b5cf6;
+                height: 1px;
+                border-top: 1px dashed #8b5cf6;
+              "
+            ></div>
+            <span>Weak (Occasional) - 13</span>
+          </div>
+          <div
+            style="
+              margin-top: 10px;
+              padding-top: 10px;
+              border-top: 1px solid rgba(99, 102, 241, 0.2);
+              font-size: 10px;
+              color: #64748b;
+            "
+          >
+            Total: 63 interactions across 10 domains
+          </div>
+
+          <!-- Quick Access for Overlapping Strong Pairs -->
+          <div
+            style="
+              margin-top: 10px;
+              padding-top: 10px;
+              border-top: 1px solid rgba(99, 102, 241, 0.2);
+            "
+          >
+            <div
+              style="
+                font-size: 10px;
+                color: #a78bfa;
+                margin-bottom: 8px;
+                font-weight: 600;
+              "
+            >
+              🔄 BIDIRECTIONAL STRONG PAIRS
+            </div>
+            <div style="font-size: 9px; color: #64748b; margin-bottom: 8px">
+              💡 Use "Wide" or "Extra" separation for easier clicking
+            </div>
+            <div style="font-size: 10px">
+              <div
+                class="clickable-item"
+                onclick="showBidirectionalPair('FOUNDATIONS', 'META')"
+                style="padding: 4px; margin-bottom: 3px; border-radius: 3px"
+              >
+                FOUNDATIONS ↔ META
+              </div>
+              <div
+                class="clickable-item"
+                onclick="showBidirectionalPair('FOUNDATIONS', 'INTEGRATION')"
+                style="padding: 4px; margin-bottom: 3px; border-radius: 3px"
+              >
+                FOUNDATIONS ↔ INTEGRATION
+              </div>
+              <div
+                class="clickable-item"
+                onclick="showBidirectionalPair('FOUNDATIONS', 'TRANSCENDENCE')"
+                style="padding: 4px; margin-bottom: 3px; border-radius: 3px"
+              >
+                FOUNDATIONS ↔ TRANSCENDENCE
+              </div>
+              <div
+                class="clickable-item"
+                onclick="showBidirectionalPair('DYNAMICS', 'OPERATIONS')"
+                style="padding: 4px; margin-bottom: 3px; border-radius: 3px"
+              >
+                DYNAMICS ↔ OPERATIONS
+              </div>
+            </div>
+          </div>
+
+          <div
+            style="
+              margin-top: 10px;
+              padding-top: 10px;
+              border-top: 1px solid rgba(99, 102, 241, 0.2);
+            "
+          >
+            <button
+              onclick="resetHighlight()"
+              style="
+                width: 100%;
+                padding: 6px;
+                background: rgba(99, 102, 241, 0.2);
+                border: 1px solid rgba(99, 102, 241, 0.3);
+                border-radius: 5px;
+                color: #e0e7ff;
+                cursor: pointer;
+                font-size: 11px;
+                transition: all 0.2s;
+                min-height: 35px;
+              "
+            >
+              🔄 Reset Highlights (ESC)
+            </button>
+          </div>
+        </div>
+
+        <svg id="graph"></svg>
+      </div>
+
+      <div id="info-panel" class="hidden">
+        <div class="panel-drag-handle"></div>
+        <div class="panel-header">
+          <h2 class="panel-title" id="panel-title">Information</h2>
+          <button class="close-btn" onclick="closePanel()">×</button>
+        </div>
+        <div id="panel-content"></div>
+      </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+      // Detect mobile
+      const isMobile =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+      const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+
+      // Mobile menu state
+      let mobileMenuOpen = false;
+      let mobilePanelOpen = false;
+
+      // Toggle functions for mobile
+      window.toggleMobileMenu = function () {
+        const controls = document.getElementById("controls");
+        const legend = document.getElementById("legend");
+        mobileMenuOpen = !mobileMenuOpen;
+
+        if (mobileMenuOpen) {
+          controls.classList.remove("mobile-hidden");
+          legend.classList.remove("mobile-hidden");
+        } else {
+          controls.classList.add("mobile-hidden");
+          legend.classList.add("mobile-hidden");
+        }
+
+        document.getElementById("mobile-menu-toggle").textContent =
+          mobileMenuOpen ? "✕" : "☰";
+      };
+
+      window.toggleMobilePanel = function () {
+        const panel = document.getElementById("info-panel");
+        mobilePanelOpen = !mobilePanelOpen;
+
+        if (mobilePanelOpen) {
+          // Show welcome content for mobile
+          panel.classList.remove("hidden");
+          if (
+            !panel.querySelector("#panel-content").innerHTML ||
+            panel
+              .querySelector("#panel-content")
+              .innerHTML.includes("Interactive Thinking Architecture")
+          ) {
+            // Keep existing welcome content
+          }
+        } else {
+          panel.classList.add("hidden");
+        }
+      };
+
+      // Data structure (keeping all original data)
+      const data = {
+        nodes: [
+          {
+            id: "META",
+            name: "META LAYER",
+            name_vi: "Siêu Tầng",
+            layer: 0,
+            concepts: 80,
+            color: "#f472b6",
+            description:
+              "Thinking-about-thinking, recursive structures, self-reference",
+            groups: [
+              {
+                name: "Meta-Cognition",
+                name_vi: "Siêu Nhận Thức",
+                count: 35,
+                description: "Các quy trình tư duy về chính tư duy",
+                concepts: [
+                  "Metacognition",
+                  "Meta-Learning",
+                  "Recursive Thinking",
+                  "Meta-Adaptation",
+                  "Self-Awareness",
+                  "Meta-Analysis",
+                  "Meta-Synthesis",
+                ],
+              },
+              {
+                name: "Meta-Structures",
+                name_vi: "Siêu Cấu Trúc",
+                count: 25,
+                description:
+                  "Các cấu trúc trừu tượng để tổ chức các cấu trúc khác",
+                concepts: [
+                  "Meta-Frameworks",
+                  "Meta-Patterns",
+                  "Ontology Engineering",
+                  "Abstraction Ladder",
+                  "Meta-Models",
+                  "Framework of Frameworks",
+                ],
+              },
+              {
+                name: "Meta-Integration",
+                name_vi: "Siêu Tích Hợp",
+                count: 20,
+                description:
+                  "Các nguyên tắc và phương pháp tích hợp ở mức độ cao nhất",
+                concepts: [
+                  "Meta-Synthesis",
+                  "Wisdom Synthesis",
+                  "Framework of Frameworks",
+                  "Paradox of Paradoxes",
+                  "Ultimate Integration",
+                ],
+              },
+            ],
+          },
+          {
+            id: "FOUNDATIONS",
+            name: "FOUNDATIONS",
+            name_vi: "Nền Tảng",
+            layer: 1,
+            concepts: 120,
+            color: "#3b82f6",
+            description:
+              "Các nguyên lý, công cụ và wisdom principles cơ bản làm base cho mọi thinking",
+            groups: [
+              {
+                name: "Core Principles",
+                name_vi: "Nguyên Lý Cốt Lõi",
+                count: 30,
+                description:
+                  "Các tiên đề và quy luật cơ bản nhất của hệ thống tư duy",
+                concepts: [
+                  "First Principles",
+                  "Duality",
+                  "Unity",
+                  "Emergence",
+                  "Feedback",
+                  "Axioms",
+                  "Universal Laws",
+                  "Core Values",
+                ],
+              },
+              {
+                name: "Fundamental Models",
+                name_vi: "Mô Hình Nền Tảng",
+                count: 50,
+                description:
+                  "Các mô hình tư duy cơ bản để cấu trúc và diễn giải thực tại",
+                concepts: [
+                  "Mental Models",
+                  "Systems Thinking",
+                  "Network Thinking",
+                  "Abstraction Ladder",
+                  "Pattern Recognition",
+                  "Archetypes",
+                ],
+              },
+              {
+                name: "Wisdom Traditions",
+                name_vi: "Truyền Thống Trí Tuệ",
+                count: 40,
+                description:
+                  "Các nguyên lý được chưng cất từ triết học Đông & Tây",
+                concepts: [
+                  "Stoicism",
+                  "Wu Wei",
+                  "Yin-Yang",
+                  "Via Negativa",
+                  "Shoshin",
+                  "Taoism",
+                  "Buddhism",
+                  "Western Philosophy",
+                ],
+              },
+            ],
+          },
+          {
+            id: "DYNAMICS",
+            name: "DYNAMICS",
+            name_vi: "Động Lực",
+            layer: 2,
+            concepts: 100,
+            color: "#10b981",
+            description:
+              "Các processes, flows, và movements của cognition và change",
+            groups: [
+              {
+                name: "Cognitive Dynamics",
+                name_vi: "Động Lực Nhận Thức",
+                count: 40,
+                description:
+                  "Các chế độ và dòng chảy của quá trình xử lý thông tin",
+                concepts: [
+                  "Convergent ↔ Divergent",
+                  "Analysis ↔ Synthesis",
+                  "Flow States",
+                  "Attention Dynamics",
+                  "Processing Modes",
+                ],
+              },
+              {
+                name: "Transformation Dynamics",
+                name_vi: "Động Lực Chuyển Hóa",
+                count: 35,
+                description:
+                  "Các quy trình về sự thay đổi, tăng trưởng và tiến hóa",
+                concepts: [
+                  "Evolution",
+                  "Metamorphosis",
+                  "Creative Destruction",
+                  "Phoenix Protocols",
+                  "Adaptation",
+                  "Emergence",
+                ],
+              },
+              {
+                name: "System Dynamics",
+                name_vi: "Động Lực Hệ Thống",
+                count: 25,
+                description: "Các lực và dòng chảy trong các hệ thống phức tạp",
+                concepts: [
+                  "Feedback Loops",
+                  "Emergence",
+                  "Self-Organization",
+                  "Tipping Points",
+                  "Attractors",
+                  "Phase Transitions",
+                ],
+              },
+            ],
+          },
+          {
+            id: "OPERATIONS",
+            name: "OPERATIONS",
+            name_vi: "Vận Hành",
+            layer: 2,
+            concepts: 110,
+            color: "#f59e0b",
+            description:
+              "Các reasoning methods, analytical tools và operational frameworks",
+            groups: [
+              {
+                name: "Analytical Tools",
+                name_vi: "Công Cụ Phân Tích",
+                count: 40,
+                description:
+                  "Các phương pháp để mổ xẻ, phân loại và làm rõ vấn đề",
+                concepts: [
+                  "Occam's Razor",
+                  "Hanlon's Razor",
+                  "Root Cause Analysis",
+                  "Decomposition",
+                  "MECE",
+                  "5 Whys",
+                  "Fishbone Diagram",
+                ],
+              },
+              {
+                name: "Reasoning Architectures",
+                name_vi: "Kiến Trúc Suy Luận",
+                count: 45,
+                description:
+                  "Các cấu trúc logic để xây dựng lập luận và rút ra kết luận",
+                concepts: [
+                  "Deduction",
+                  "Induction",
+                  "Abduction",
+                  "Bayesian Thinking",
+                  "Causal Reasoning",
+                  "Counterfactual Thinking",
+                ],
+              },
+              {
+                name: "Decision Frameworks",
+                name_vi: "Khung Ra Quyết Định",
+                count: 25,
+                description:
+                  "Các mô hình để đánh giá lựa chọn và định hướng hành động",
+                concepts: [
+                  "Game Theory",
+                  "Decision Trees",
+                  "Eisenhower Matrix",
+                  "Cynefin Framework",
+                  "OODA Loop",
+                  "Cost-Benefit Analysis",
+                ],
+              },
+            ],
+          },
+          {
+            id: "CREATION",
+            name: "CREATION",
+            name_vi: "Sáng Tạo",
+            layer: 2,
+            concepts: 100,
+            color: "#8b5cf6",
+            description:
+              "Các creative catalysts, innovation methods và generative processes",
+            groups: [
+              {
+                name: "Idea Generation",
+                name_vi: "Tạo Ý Tưởng",
+                count: 40,
+                description:
+                  "Các kỹ thuật và phương pháp để khởi tạo và phát triển ý tưởng mới",
+                concepts: [
+                  "Lateral Thinking",
+                  "SCAMPER",
+                  "Brainstorming",
+                  "Morphological Analysis",
+                  "Random Input",
+                  "Provocation",
+                ],
+              },
+              {
+                name: "Innovation Methods",
+                name_vi: "Phương Pháp Đổi Mới",
+                count: 35,
+                description:
+                  "Các quy trình có cấu trúc để phát triển ý tưởng thành giải pháp thực tế",
+                concepts: [
+                  "Design Thinking",
+                  "Lean Innovation",
+                  "TRIZ",
+                  "Biomimicry",
+                  "Blue Ocean Strategy",
+                  "Jobs-to-be-Done",
+                ],
+              },
+              {
+                name: "Breakthrough Dynamics",
+                name_vi: "Động Lực Đột Phá",
+                count: 25,
+                description:
+                  "Các khái niệm và chiến lược để tạo ra những thay đổi phi tuyến tính",
+                concepts: [
+                  "Quantum Leap",
+                  "Disruptive Innovation",
+                  "Paradigm Breaking",
+                  "10x Thinking",
+                  "Moonshot Thinking",
+                ],
+              },
+            ],
+          },
+          {
+            id: "NAVIGATION",
+            name: "NAVIGATION",
+            name_vi: "Điều Hướng",
+            layer: 3,
+            concepts: 90,
+            color: "#06b6d4",
+            description: "Các tools và methods để orient, direct và find paths",
+            groups: [
+              {
+                name: "Orientation Systems",
+                name_vi: "Hệ Thống Định Hướng",
+                count: 30,
+                description:
+                  "Các công cụ cơ bản để xác định vị trí và phương hướng",
+                concepts: [
+                  "Compass",
+                  "Maps",
+                  "Waypoints",
+                  "North Star",
+                  "Wardley Maps",
+                  "Territory Mapping",
+                ],
+              },
+              {
+                name: "Strategic Wayfinding",
+                name_vi: "Tìm Đường Chiến Lược",
+                count: 35,
+                description:
+                  "Các phương pháp để điều hướng trong môi trường cạnh tranh và không chắc chắn",
+                concepts: [
+                  "Scenario Planning",
+                  "Game Theory Navigation",
+                  "OODA Loop",
+                  "Strategic Options",
+                  "Path Dependencies",
+                ],
+              },
+              {
+                name: "Complexity Navigation",
+                name_vi: "Điều Hướng Phức Tạp",
+                count: 25,
+                description:
+                  "Các kỹ thuật để di chuyển trong các hệ thống phi tuyến và hỗn loạn",
+                concepts: [
+                  "Edge of Chaos",
+                  "Adaptive Navigation",
+                  "Intuitive Wayfinding",
+                  "Sensemaking",
+                  "Probe-Sense-Respond",
+                ],
+              },
+            ],
+          },
+          {
+            id: "INTEGRATION",
+            name: "INTEGRATION",
+            name_vi: "Tích Hợp",
+            layer: 3,
+            concepts: 100,
+            color: "#ec4899",
+            description:
+              "Các methods để combine, synthesize và create coherence",
+            groups: [
+              {
+                name: "Knowledge Integration",
+                name_vi: "Tích Hợp Tri Thức",
+                count: 35,
+                description:
+                  "Các phương pháp để tổng hợp thông tin từ nhiều nguồn thành một thể thống nhất",
+                concepts: [
+                  "Zettelkasten",
+                  "Feynman Technique",
+                  "Conceptual Blending",
+                  "Synthesis",
+                  "Knowledge Graphs",
+                  "Semantic Networks",
+                ],
+              },
+              {
+                name: "Personal Integration",
+                name_vi: "Tích Hợp Cá Nhân",
+                count: 35,
+                description:
+                  "Các thực hành để hợp nhất các khía cạnh khác nhau của bản thân",
+                concepts: [
+                  "Shadow Integration",
+                  "Embodied Cognition",
+                  "Peak Experience Integration",
+                  "Trauma Integration",
+                  "Mind-Body Integration",
+                ],
+              },
+              {
+                name: "Systemic Integration",
+                name_vi: "Tích Hợp Hệ Thống",
+                count: 30,
+                description:
+                  "Các nguyên tắc để kết hợp các hệ thống và các mô thức lớn hơn",
+                concepts: [
+                  "Integral Theory (AQAL)",
+                  "Holonic Wisdom",
+                  "Cross-paradigm Synthesis",
+                  "Systems Integration",
+                  "Holistic Thinking",
+                ],
+              },
+            ],
+          },
+          {
+            id: "VALIDATION",
+            name: "VALIDATION",
+            name_vi: "Kiểm Chứng",
+            layer: 3,
+            concepts: 80,
+            color: "#14b8a6",
+            description: "Các methods để test, verify và ensure quality/truth",
+            groups: [
+              {
+                name: "Empirical Validation",
+                name_vi: "Kiểm Chứng Thực Nghiệm",
+                count: 30,
+                description:
+                  "Các phương pháp để kiểm tra ý tưởng dựa trên dữ liệu và thực tế",
+                concepts: [
+                  "Falsification",
+                  "A/B Testing",
+                  "Peer Review",
+                  "Triangulation",
+                  "Reproducibility",
+                  "Statistical Validation",
+                ],
+              },
+              {
+                name: "Adversarial Testing",
+                name_vi: "Kiểm Thử Đối Kháng",
+                count: 25,
+                description:
+                  "Các kỹ thuật để chủ động tấn công và tìm ra điểm yếu",
+                concepts: [
+                  "Red Teaming",
+                  "Pre-mortem",
+                  "Stress Testing",
+                  "Devil's Advocate",
+                  "War Gaming",
+                  "Chaos Engineering",
+                ],
+              },
+              {
+                name: "Feedback Systems",
+                name_vi: "Hệ Thống Phản Hồi",
+                count: 25,
+                description:
+                  "Các cơ chế để thu thập, xử lý và tích hợp thông tin phản hồi",
+                concepts: [
+                  "360-Degree Feedback",
+                  "Signal-Noise Separation",
+                  "Iterative Refinement",
+                  "Continuous Improvement",
+                  "Learning Loops",
+                ],
+              },
+            ],
+          },
+          {
+            id: "AMPLIFICATION",
+            name: "AMPLIFICATION",
+            name_vi: "Khuếch Đại",
+            layer: 4,
+            concepts: 90,
+            color: "#f97316",
+            description:
+              "Các multipliers, catalysts và network effects để scale impact",
+            groups: [
+              {
+                name: "Exponential Multipliers",
+                name_vi: "Nhân Tử Lũy Thừa",
+                count: 35,
+                description:
+                  "Các nguyên lý tạo ra sự tăng trưởng phi tuyến tính",
+                concepts: [
+                  "Compounding",
+                  "Leverage",
+                  "Automation",
+                  "Viral Mechanics",
+                  "Exponential Growth",
+                  "Power Laws",
+                ],
+              },
+              {
+                name: "Synergy & Catalysts",
+                name_vi: "Hiệp Lực & Xúc Tác",
+                count: 30,
+                description:
+                  "Các phương pháp tạo ra giá trị lớn hơn tổng các thành phần",
+                concepts: [
+                  "Synergy",
+                  "Complementarity",
+                  "Catalysts",
+                  "Chain Reactions",
+                  "Tipping Points",
+                  "Emergence Effects",
+                ],
+              },
+              {
+                name: "Network Effects",
+                name_vi: "Hiệu Ứng Mạng Lưới",
+                count: 25,
+                description:
+                  "Các động lực khuếch đại giá trị dựa trên sự kết nối",
+                concepts: [
+                  "Metcalfe's Law",
+                  "Reed's Law",
+                  "Preferential Attachment",
+                  "Platform Dynamics",
+                  "Network Externalities",
+                ],
+              },
+            ],
+          },
+          {
+            id: "TRANSCENDENCE",
+            name: "TRANSCENDENCE",
+            name_vi: "Siêu Việt",
+            layer: 5,
+            concepts: 60,
+            color: "#dc2626",
+            description:
+              "Các concepts về going beyond, ultimate integration và enlightenment",
+            groups: [
+              {
+                name: "Paradox Mastery",
+                name_vi: "Làm Chủ Nghịch Lý",
+                count: 20,
+                description:
+                  "Các công cụ để điều hướng và hợp nhất các mâu thuẫn",
+                concepts: [
+                  "Both/And Thinking",
+                  "Unity of Opposites",
+                  "Dialectical Transcendence",
+                  "Koans",
+                  "Paradox Resolution",
+                ],
+              },
+              {
+                name: "Consciousness States",
+                name_vi: "Các Trạng Thái Ý Thức",
+                count: 25,
+                description:
+                  "Các trạng thái tồn tại và nhận thức vượt ra ngoài tư duy thông thường",
+                concepts: [
+                  "Unity Consciousness",
+                  "Witness Consciousness",
+                  "Flow Consciousness",
+                  "Non-dual States",
+                  "Enlightenment",
+                ],
+              },
+              {
+                name: "Ultimate Principles",
+                name_vi: "Nguyên Lý Tối Hậu",
+                count: 15,
+                description:
+                  "Các khái niệm mô tả bản chất cuối cùng của thực tại và sự thống nhất",
+                concepts: [
+                  "Emptiness (Sunyata)",
+                  "All is One",
+                  "Infinity",
+                  "The One",
+                  "Living Wisdom",
+                  "Ultimate Reality",
+                ],
+              },
+            ],
+          },
+        ],
+        edges: [
+          // ===== STRONG INTERACTIONS (30 total) =====
+          // From FOUNDATIONS (9 one-way connections)
+          {
+            source: "FOUNDATIONS",
+            target: "META",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Axioms → Meta-thinking",
+            description: "Provides axioms for meta-thinking",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "OPERATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Theory → Practice",
+            description: "Theory guides practice methods",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "DYNAMICS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Principles → Change",
+            description: "Principles shape change understanding",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "CREATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Values → Innovation",
+            description: "Core values inspire innovation",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "NAVIGATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Values → Direction",
+            description: "Values provide directional compass",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "INTEGRATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Principles → Integration",
+            description: "Principles guide integration",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "VALIDATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Standards → Testing",
+            description: "Standards for truth testing",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "AMPLIFICATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Ethics → Scaling",
+            description: "Core principles define scaling ethics",
+          },
+          {
+            source: "FOUNDATIONS",
+            target: "TRANSCENDENCE",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Principles → Transcendence",
+            description: "Principles enable transcendence",
+          },
+
+          // Other Strong Connections (21 more for total of 30)
+          {
+            source: "OPERATIONS",
+            target: "VALIDATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Methods ↔ Testing",
+            forward: "Methods need testing",
+            backward: "Test results refine methods",
+          },
+          {
+            source: "CREATION",
+            target: "VALIDATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Ideas ↔ Verification",
+            forward: "Ideas need verification",
+            backward: "Feedback inspires new creation",
+          },
+          {
+            source: "DYNAMICS",
+            target: "CREATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Change ↔ Innovation",
+            forward: "Change triggers innovation",
+            backward: "Innovation causes change",
+          },
+          {
+            source: "OPERATIONS",
+            target: "INTEGRATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Analysis ↔ Synthesis",
+            forward: "Analysis feeds synthesis",
+            backward: "Synthesis guides analysis",
+          },
+          {
+            source: "INTEGRATION",
+            target: "AMPLIFICATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Coherence → Scale",
+            description: "Coherent wholes scale better",
+          },
+          {
+            source: "DYNAMICS",
+            target: "NAVIGATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Flow ↔ Navigation",
+            forward: "Understanding flow enables navigation",
+            backward: "Navigation reveals dynamics",
+          },
+          {
+            source: "META",
+            target: "INTEGRATION",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Meta ↔ Synthesis",
+            forward: "Meta-perspective guides synthesis",
+            backward: "Synthesis creates meta-patterns",
+          },
+          {
+            source: "TRANSCENDENCE",
+            target: "FOUNDATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Insights → Foundations",
+            description: "Transcendent insights deepen foundations",
+          },
+          {
+            source: "META",
+            target: "TRANSCENDENCE",
+            strength: "strong",
+            type: "bidirectional",
+            label: "Awareness ↔ Breakthrough",
+            forward: "Meta-awareness enables breakthrough",
+            backward: "Breakthrough creates new meta-levels",
+          },
+          {
+            source: "NAVIGATION",
+            target: "OPERATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Strategy → Execution",
+            description: "Strategy directs execution",
+          },
+          {
+            source: "CREATION",
+            target: "INTEGRATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Ideas → Whole",
+            description: "New ideas become part of whole",
+          },
+          {
+            source: "VALIDATION",
+            target: "OPERATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Feedback → Methods",
+            description: "Test feedback improves methods",
+          },
+          {
+            source: "AMPLIFICATION",
+            target: "TRANSCENDENCE",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Scale → Breakthrough",
+            description: "Maximum scale triggers breakthrough",
+          },
+          {
+            source: "INTEGRATION",
+            target: "FOUNDATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Synthesis → Principles",
+            description: "Synthesis enriches principles",
+          },
+          {
+            source: "CREATION",
+            target: "DYNAMICS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Innovation → Change",
+            description: "Innovation disrupts systems",
+          },
+          {
+            source: "DYNAMICS",
+            target: "OPERATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Change → Methods",
+            description: "Change requires new methods",
+          },
+          {
+            source: "OPERATIONS",
+            target: "DYNAMICS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Analysis → Understanding",
+            description: "Methods reveal dynamics",
+          },
+          {
+            source: "NAVIGATION",
+            target: "VALIDATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Path → Checking",
+            description: "Strategic paths need validation",
+          },
+          {
+            source: "VALIDATION",
+            target: "CREATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Testing → Innovation",
+            description: "Validation results spark new ideas",
+          },
+          {
+            source: "INTEGRATION",
+            target: "NAVIGATION",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Synthesis → Direction",
+            description: "Holistic view guides navigation",
+          },
+          {
+            source: "META",
+            target: "FOUNDATIONS",
+            strength: "strong",
+            type: "unidirectional",
+            label: "Meta-awareness → Axioms",
+            description: "Meta-thinking deepens foundations",
+          },
+
+          // ===== MODERATE INTERACTIONS (20 total) =====
+          {
+            source: "DYNAMICS",
+            target: "VALIDATION",
+            strength: "moderate",
+            type: "bidirectional",
+            label: "Changes ↔ Validation",
+            forward: "Changes need validation",
+            backward: "Validation tracks changes",
+          },
+          {
+            source: "META",
+            target: "OPERATIONS",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Observation → Patterns",
+            description: "Observes operational patterns",
+          },
+          {
+            source: "META",
+            target: "CREATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Meta → Innovation",
+            description: "Identifies innovation patterns",
+          },
+          {
+            source: "NAVIGATION",
+            target: "INTEGRATION",
+            strength: "moderate",
+            type: "bidirectional",
+            label: "Strategy ↔ Synthesis",
+            forward: "Strategic view needs synthesis",
+            backward: "Holistic view guides navigation",
+          },
+          {
+            source: "OPERATIONS",
+            target: "CREATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Structure → Ideas",
+            description: "Structured methods support ideation",
+          },
+          {
+            source: "AMPLIFICATION",
+            target: "DYNAMICS",
+            strength: "moderate",
+            type: "bidirectional",
+            label: "Scaling ↔ Dynamics",
+            forward: "Scaling changes dynamics",
+            backward: "Growth patterns inform amplification",
+          },
+          {
+            source: "INTEGRATION",
+            target: "VALIDATION",
+            strength: "moderate",
+            type: "bidirectional",
+            label: "Synthesis ↔ Verification",
+            forward: "Synthesis needs verification",
+            backward: "Testing improves integration",
+          },
+          {
+            source: "CREATION",
+            target: "AMPLIFICATION",
+            strength: "moderate",
+            type: "bidirectional",
+            label: "Innovation ↔ Scale",
+            forward: "Innovations ready to scale",
+            backward: "Scale demands create innovation",
+          },
+          {
+            source: "NAVIGATION",
+            target: "CREATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Direction → Innovation",
+            description: "Strategic direction inspires creation",
+          },
+          {
+            source: "VALIDATION",
+            target: "NAVIGATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Feedback → Course",
+            description: "Validation corrects navigation",
+          },
+          {
+            source: "OPERATIONS",
+            target: "NAVIGATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Methods → Wayfinding",
+            description: "Operational insights guide navigation",
+          },
+          {
+            source: "DYNAMICS",
+            target: "AMPLIFICATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Change → Growth",
+            description: "Dynamic systems enable scaling",
+          },
+          {
+            source: "INTEGRATION",
+            target: "DYNAMICS",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Unity → Flow",
+            description: "Integration creates new dynamics",
+          },
+          {
+            source: "CREATION",
+            target: "NAVIGATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Innovation → Paths",
+            description: "New ideas open new paths",
+          },
+          {
+            source: "AMPLIFICATION",
+            target: "VALIDATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Scale → Testing",
+            description: "Scaling requires validation",
+          },
+          {
+            source: "META",
+            target: "DYNAMICS",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Meta → Flow",
+            description: "Meta-view reveals dynamics",
+          },
+          {
+            source: "TRANSCENDENCE",
+            target: "INTEGRATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Unity → Integration",
+            description: "Transcendent states enable integration",
+          },
+          {
+            source: "NAVIGATION",
+            target: "DYNAMICS",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Path → Understanding",
+            description: "Navigation reveals system dynamics",
+          },
+          {
+            source: "VALIDATION",
+            target: "INTEGRATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Testing → Synthesis",
+            description: "Validation enables better integration",
+          },
+          {
+            source: "OPERATIONS",
+            target: "AMPLIFICATION",
+            strength: "moderate",
+            type: "unidirectional",
+            label: "Methods → Scale",
+            description: "Operational excellence enables scaling",
+          },
+
+          // ===== WEAK INTERACTIONS (13 total) =====
+          {
+            source: "NAVIGATION",
+            target: "FOUNDATIONS",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Experience → Principles",
+            description: "Experience updates principles slightly",
+          },
+          {
+            source: "NAVIGATION",
+            target: "AMPLIFICATION",
+            strength: "weak",
+            type: "bidirectional",
+            label: "Navigation ↔ Leverage",
+            forward: "Identifies leverage points",
+            backward: "Scale changes navigation needs",
+          },
+          {
+            source: "OPERATIONS",
+            target: "TRANSCENDENCE",
+            strength: "weak",
+            type: "bidirectional",
+            label: "Methods ↔ Breakthrough",
+            forward: "Methods rarely lead to breakthrough",
+            backward: "Breakthrough sometimes creates new methods",
+          },
+          {
+            source: "VALIDATION",
+            target: "TRANSCENDENCE",
+            strength: "weak",
+            type: "bidirectional",
+            label: "Testing ↔ Insight",
+            forward: "Testing occasionally triggers insight",
+            backward: "Transcendence defies validation",
+          },
+          {
+            source: "META",
+            target: "NAVIGATION",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Meta → Navigation",
+            description: "Observes navigation strategies",
+          },
+          {
+            source: "DYNAMICS",
+            target: "INTEGRATION",
+            strength: "weak",
+            type: "bidirectional",
+            label: "Change ↔ Integration",
+            forward: "Change patterns get integrated",
+            backward: "Integration influences dynamics",
+          },
+          {
+            source: "CREATION",
+            target: "TRANSCENDENCE",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Innovation → Breakthrough",
+            description: "Radical creation enables transcendence",
+          },
+          {
+            source: "AMPLIFICATION",
+            target: "NAVIGATION",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Scale → Direction",
+            description: "Scale changes navigation priorities",
+          },
+          {
+            source: "TRANSCENDENCE",
+            target: "DYNAMICS",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Breakthrough → Flow",
+            description: "Transcendence creates new dynamics",
+          },
+          {
+            source: "META",
+            target: "VALIDATION",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Meta → Testing",
+            description: "Meta-awareness improves validation",
+          },
+          {
+            source: "INTEGRATION",
+            target: "TRANSCENDENCE",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Synthesis → Unity",
+            description: "Deep integration enables transcendence",
+          },
+          {
+            source: "AMPLIFICATION",
+            target: "CREATION",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Scale → Innovation",
+            description: "Scaling pressures drive innovation",
+          },
+          {
+            source: "NAVIGATION",
+            target: "TRANSCENDENCE",
+            strength: "weak",
+            type: "unidirectional",
+            label: "Journey → Enlightenment",
+            description: "Long navigation leads to transcendence",
+          },
+        ],
+      };
+
+      // Initialize D3.js visualization with responsive dimensions
+      const width = window.innerWidth - (isMobile ? 0 : 400);
+      const height = window.innerHeight;
+
+      const svg = d3.select("#graph");
+      const g = svg.append("g");
+
+      // Define arrow markers for directed edges
+      const defs = svg.append("defs");
+
+      // Define different arrow markers for different strengths
+      ["strong", "moderate", "weak"].forEach((strength) => {
+        defs
+          .append("marker")
+          .attr("id", `arrow-${strength}`)
+          .attr("viewBox", "0 -5 10 10")
+          .attr("refX", 25)
+          .attr("refY", 0)
+          .attr("markerWidth", 6)
+          .attr("markerHeight", 6)
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M0,-5L10,0L0,5")
+          .attr("class", "arrowhead");
+      });
+
+      // Color scale for layers
+      const layerColors = {
+        0: "#f472b6", // META
+        1: "#3b82f6", // Foundation
+        2: "#10b981", // Operational Core
+        3: "#ec4899", // Integration Layer
+        4: "#f97316", // Enhancement
+        5: "#dc2626", // Transcendent
+      };
+
+      // Edge colors by strength
+      const edgeColors = {
+        strong: "#10b981",
+        moderate: "#f59e0b",
+        weak: "#8b5cf6",
+      };
+
+      // --- CONSOLIDATED STATE & LAYOUTS ---
+      let currentLayout = "force";
+      let positionsFixed = false;
+      let edgeSeparation = "normal";
+      const separationMultipliers = {
+        normal: 0.15,
+        wide: 0.25,
+        extra: 0.35,
+      };
+      const layouts = {}; // Defined after helper functions
+
+      // Create force simulation with mobile adjustments
+      const simulation = d3
+        .forceSimulation(data.nodes)
+        .force(
+          "link",
+          d3
+            .forceLink(data.edges)
+            .id((d) => d.id)
+            .distance((d) => {
+              const base = isMobile ? 80 : 120;
+              if (d.strength === "strong") return base;
+              if (d.strength === "moderate") return base * 1.5;
+              return base * 2;
+            })
+            .strength((d) => {
+              if (d.strength === "strong") return 1.2;
+              if (d.strength === "moderate") return 0.8;
+              return 0.4;
+            })
+        )
+        .force(
+          "charge",
+          d3
+            .forceManyBody()
+            .strength(isMobile ? -800 : -1200)
+            .distanceMax(isMobile ? 300 : 500)
+        )
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force(
+          "collision",
+          d3
+            .forceCollide()
+            .radius(
+              (d) =>
+                Math.sqrt(d.concepts) * (isMobile ? 3 : 4) +
+                (isMobile ? 15 : 20)
+            )
+            .iterations(2)
+        )
+        .force(
+          "y",
+          d3
+            .forceY((d) => {
+              const layerPositions = {
+                0: height * 0.15,
+                1: height * 0.3,
+                2: height * 0.45,
+                3: height * 0.6,
+                4: height * 0.75,
+                5: height * 0.9,
+              };
+              return layerPositions[d.layer] || height / 2;
+            })
+            .strength(0.4)
+        )
+        .force("x", d3.forceX(width / 2).strength(0.05));
+
+      // Create edges and nodes
+      const edgeGroup = g.append("g").attr("class", "edges");
+      let edgeHitArea, edge, edgeLabel, node;
+
+      // --- HELPER FUNCTIONS (keeping all original functions) ---
+
+      function getEdgePath(d) {
+        const dx = d.target.x - d.source.x;
+        const dy = d.target.y - d.source.y;
+        const dr = Math.sqrt(dx * dx + dy * dy);
+
+        const hasReverse = data.edges.some(
+          (e) =>
+            (e.source.id || e.source) === (d.target.id || d.target) &&
+            (e.target.id || e.target) === (d.source.id || d.source) &&
+            e !== d
+        );
+
+        if (d.type === "bidirectional") {
+          return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+        } else if (hasReverse) {
+          const multiplier = separationMultipliers[edgeSeparation];
+          const sourceId = d.source.id || d.source;
+          const targetId = d.target.id || d.target;
+          const shouldCurveUp = sourceId < targetId;
+
+          const midX = (d.source.x + d.target.x) / 2;
+          const midY = (d.source.y + d.target.y) / 2;
+
+          const offsetDistance = Math.min(80, dr * multiplier);
+          const angle = Math.atan2(dy, dx);
+          const perpAngle = angle + Math.PI / 2;
+
+          const offsetX =
+            midX +
+            Math.cos(perpAngle) * offsetDistance * (shouldCurveUp ? 1 : -1);
+          const offsetY =
+            midY +
+            Math.sin(perpAngle) * offsetDistance * (shouldCurveUp ? 1 : -1);
+
+          return `M${d.source.x},${d.source.y} Q${offsetX},${offsetY} ${d.target.x},${d.target.y}`;
+        } else {
+          return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+        }
+      }
+
+      function updatePositions() {
+        if (!edgeHitArea || !edge || !edgeLabel || !node) return;
+
+        edgeHitArea.attr("d", getEdgePath);
+        edge.attr("d", getEdgePath);
+
+        edgeLabel
+          .attr("x", (d) => {
+            const hasReverse = data.edges.some(
+              (e) =>
+                (e.source.id || e.source) === (d.target.id || d.target) &&
+                (e.target.id || e.target) === (d.source.id || d.source) &&
+                e !== d
+            );
+            if (hasReverse && d.type !== "bidirectional") {
+              const dx = d.target.x - d.source.x,
+                dy = d.target.y - d.source.y,
+                dr = Math.sqrt(dx * dx + dy * dy);
+              const multiplier = separationMultipliers[edgeSeparation];
+              const sourceId = d.source.id || d.source,
+                targetId = d.target.id || d.target;
+              const shouldCurveUp = sourceId < targetId;
+              const midX = (d.source.x + d.target.x) / 2,
+                angle = Math.atan2(dy, dx),
+                perpAngle = angle + Math.PI / 2;
+              const offsetDistance = Math.min(80, dr * multiplier) * 0.5;
+              return (
+                midX +
+                Math.cos(perpAngle) * offsetDistance * (shouldCurveUp ? 1 : -1)
+              );
+            }
+            return (d.source.x + d.target.x) / 2;
+          })
+          .attr("y", (d) => {
+            const hasReverse = data.edges.some(
+              (e) =>
+                (e.source.id || e.source) === (d.target.id || d.target) &&
+                (e.target.id || e.target) === (d.source.id || d.source) &&
+                e !== d
+            );
+            if (hasReverse && d.type !== "bidirectional") {
+              const dx = d.target.x - d.source.x,
+                dy = d.target.y - d.source.y,
+                dr = Math.sqrt(dx * dx + dy * dy);
+              const multiplier = separationMultipliers[edgeSeparation];
+              const sourceId = d.source.id || d.source,
+                targetId = d.target.id || d.target;
+              const shouldCurveUp = sourceId < targetId;
+              const midY = (d.source.y + d.target.y) / 2,
+                angle = Math.atan2(dy, dx),
+                perpAngle = angle + Math.PI / 2;
+              const offsetDistance = Math.min(80, dr * multiplier) * 0.5;
+              return (
+                midY +
+                Math.sin(perpAngle) * offsetDistance * (shouldCurveUp ? 1 : -1)
+              );
+            }
+            return (d.source.y + d.target.y) / 2;
+          });
+
+        node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+      }
+
+      // Define layouts
+      layouts.force = function () {
+        simulation.alpha(1).restart();
+        if (!positionsFixed) {
+          data.nodes.forEach((d) => {
+            d.fx = null;
+            d.fy = null;
+          });
+        }
+      };
+
+      layouts.hierarchical = function () {
+        simulation.stop();
+        const layerGroups = d3.group(data.nodes, (d) => d.layer);
+        node
+          .transition()
+          .duration(750)
+          .tween("position", function (d) {
+            const layerNodes = layerGroups.get(d.layer);
+            const index = layerNodes.indexOf(d);
+            const layerY = (d.layer + 1) * (height / 7);
+            const spacing = width / (layerNodes.length + 1);
+            const targetX = spacing * (index + 1);
+            const targetY = layerY;
+            const interpolateX = d3.interpolate(d.x, targetX);
+            const interpolateY = d3.interpolate(d.y, targetY);
+            return function (t) {
+              d.fx = d.x = interpolateX(t);
+              d.fy = d.y = interpolateY(t);
+              updatePositions();
+            };
+          });
+      };
+
+      layouts.circular = function () {
+        simulation.stop();
+        const radius = Math.min(width, height) * (isMobile ? 0.4 : 0.35);
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const angleStep = (2 * Math.PI) / data.nodes.length;
+        node
+          .transition()
+          .duration(750)
+          .tween("position", function (d, i) {
+            const angle = i * angleStep;
+            const targetX = centerX + radius * Math.cos(angle);
+            const targetY = centerY + radius * Math.sin(angle);
+            const interpolateX = d3.interpolate(d.x, targetX);
+            const interpolateY = d3.interpolate(d.y, targetY);
+            return function (t) {
+              d.fx = d.x = interpolateX(t);
+              d.fy = d.y = interpolateY(t);
+              updatePositions();
+            };
+          });
+      };
+
+      layouts.grid = function () {
+        simulation.stop();
+        const cols = Math.ceil(Math.sqrt(data.nodes.length));
+        const rows = Math.ceil(data.nodes.length / cols);
+        const cellWidth = width / (cols + 1);
+        const cellHeight = height / (rows + 1);
+        node
+          .transition()
+          .duration(750)
+          .tween("position", function (d, i) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const targetX = cellWidth * (col + 1);
+            const targetY = cellHeight * (row + 1);
+            const interpolateX = d3.interpolate(d.x, targetX);
+            const interpolateY = d3.interpolate(d.y, targetY);
+            return function (t) {
+              d.fx = d.x = interpolateX(t);
+              d.fy = d.y = interpolateY(t);
+              updatePositions();
+            };
+          });
+      };
+
+      // --- CREATE D3 ELEMENTS (with touch support) ---
+
+      edgeHitArea = edgeGroup
+        .selectAll(".edge-hit")
+        .data(data.edges)
+        .enter()
+        .append("path")
+        .attr("class", "edge-hit")
+        .attr("stroke", "transparent")
+        .attr("stroke-width", isTouch ? 30 : 20)
+        .attr("fill", "none")
+        .style("cursor", "pointer")
+        .on("click", handleEdgeClick)
+        .on("contextmenu", function (event, d) {
+          event.preventDefault();
+          const sourceId = d.source.id || d.source;
+          const targetId = d.target.id || d.target;
+          const overlappingEdges = data.edges.filter((e) => {
+            const eSourceId = e.source.id || e.source;
+            const eTargetId = e.target.id || e.target;
+            return (
+              (eSourceId === sourceId && eTargetId === targetId) ||
+              (eSourceId === targetId && eTargetId === sourceId)
+            );
+          });
+          if (overlappingEdges.length > 0) {
+            showEdgeSelector(event, overlappingEdges);
+          }
+        })
+        .on("mouseenter", function (event, d) {
+          if (!isTouch) {
+            d3.select(this.nextSibling).style(
+              "filter",
+              "brightness(1.5) drop-shadow(0 0 10px currentColor)"
+            );
+            showTooltip(
+              event,
+              `${d.label}<br><small>${d.strength} interaction</small><br><small style="color: #6366f1;">Right-click for options</small>`
+            );
+          }
+        })
+        .on("mouseleave", function () {
+          if (!isTouch) {
+            d3.select(this.nextSibling).style("filter", null);
+            hideTooltip();
+          }
+        });
+
+      edge = edgeGroup
+        .selectAll(".edge")
+        .data(data.edges)
+        .enter()
+        .append("path")
+        .attr("class", (d) => `edge edge-${d.strength}`)
+        .attr("stroke", (d) => edgeColors[d.strength])
+        .attr("marker-end", (d) =>
+          d.type === "unidirectional" ? `url(#arrow-${d.strength})` : null
+        )
+        .style("pointer-events", "none");
+
+      edgeLabel = g
+        .append("g")
+        .attr("class", "edge-labels")
+        .selectAll("text")
+        .data(data.edges)
+        .enter()
+        .append("text")
+        .attr("class", "edge-label")
+        .text((d) => d.label)
+        .attr("text-anchor", "middle")
+        .style("pointer-events", "none");
+
+      // Define clusters
+      const clusters = {
+        THINKING_TRIAD: ["FOUNDATIONS", "OPERATIONS", "VALIDATION"],
+        INNOVATION_CYCLE: ["DYNAMICS", "CREATION", "VALIDATION", "INTEGRATION"],
+        STRATEGIC_DIAMOND: [
+          "NAVIGATION",
+          "FOUNDATIONS",
+          "DYNAMICS",
+          "OPERATIONS",
+        ],
+        SCALING_PATH: ["INTEGRATION", "AMPLIFICATION", "TRANSCENDENCE"],
+        META_TRIANGLE: ["META", "FOUNDATIONS", "TRANSCENDENCE"],
+      };
+
+      function findNodeClusters(nodeId) {
+        return Object.entries(clusters)
+          .filter(([_, nodes]) => nodes.includes(nodeId))
+          .map(([clusterName, _]) => clusterName);
+      }
+
+      // Node creation with mobile adjustments
+      node = g
+        .append("g")
+        .attr("class", "nodes")
+        .selectAll("g")
+        .data(data.nodes)
+        .enter()
+        .append("g")
+        .attr("class", "node")
+        .on("click", showNodeInfo)
+        .on("mouseenter", function (event, d) {
+          if (!isTouch) {
+            const nodeClusters = findNodeClusters(d.id);
+            const clusterNodes = new Set();
+            nodeClusters.forEach((cluster) => {
+              clusters[cluster].forEach((nodeId) => clusterNodes.add(nodeId));
+            });
+
+            edge.style("opacity", (e) =>
+              (e.source.id || e.source) === d.id ||
+              (e.target.id || e.target) === d.id
+                ? 1
+                : clusterNodes.has(e.source.id || e.source) &&
+                  clusterNodes.has(e.target.id || e.target)
+                ? 0.6
+                : 0.1
+            );
+            edgeHitArea.style("display", (e) =>
+              (e.source.id || e.source) === d.id ||
+              (e.target.id || e.target) === d.id ||
+              (clusterNodes.has(e.source.id || e.source) &&
+                clusterNodes.has(e.target.id || e.target))
+                ? "block"
+                : "none"
+            );
+
+            node.style("opacity", (n) => {
+              if (n === d) return 1;
+              if (clusterNodes.has(n.id)) return 0.8;
+              const isConnected = data.edges.some(
+                (e) =>
+                  ((e.source.id || e.source) === d.id &&
+                    (e.target.id || e.target) === n.id) ||
+                  ((e.target.id || e.target) === d.id &&
+                    (e.source.id || e.source) === n.id)
+              );
+              return isConnected ? 1 : 0.3;
+            });
+
+            if (nodeClusters.length > 0) {
+              showTooltip(
+                event,
+                `${d.name}<br><small>Clusters: ${nodeClusters.join(
+                  ", "
+                )}</small>`
+              );
+            }
+          }
+        })
+        .on("mouseleave", function () {
+          if (!isTouch) {
+            edge.style("opacity", (d) =>
+              d.strength === "strong"
+                ? 0.9
+                : d.strength === "moderate"
+                ? 0.7
+                : 0.5
+            );
+            edgeHitArea.style("display", "block");
+            node.style("opacity", 1);
+            hideTooltip();
+          }
+        })
+        .call(
+          d3
+            .drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended)
+        );
+
+      // Node circle with mobile size adjustments
+      node
+        .append("circle")
+        .attr("class", "node-circle")
+        .attr("r", (d) => Math.sqrt(d.concepts) * (isMobile ? 2.5 : 3))
+        .attr("fill", (d) => d.color)
+        .attr("stroke", "#fff")
+        .attr("stroke-opacity", 0.8);
+
+      // Node labels with mobile visibility
+      node
+        .append("text")
+        .attr("class", "node-label")
+        .attr("dy", isMobile ? -15 : -25)
+        .attr("text-anchor", "middle")
+        .text((d) => d.name);
+      node
+        .append("text")
+        .attr("class", "node-sublabel")
+        .attr("dy", isMobile ? -5 : -10)
+        .attr("text-anchor", "middle")
+        .text((d) => d.name_vi);
+      node
+        .append("text")
+        .attr("class", "node-sublabel")
+        .attr("dy", isMobile ? 20 : 30)
+        .attr("text-anchor", "middle")
+        .text((d) => `${d.concepts} concepts`);
+
+      // --- SIMULATION & EVENT HANDLERS (keeping all original functions) ---
+
+      simulation.on("tick", updatePositions);
+
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+        svg.classed("grabbing", true);
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        if (!positionsFixed && currentLayout === "force") {
+          d.fx = null;
+          d.fy = null;
+        }
+        svg.classed("grabbing", false);
+      }
+
+      // Double click/tap to reset
+      svg.on("dblclick", function (event) {
+        event.preventDefault();
+        resetHighlight();
+        closeEdgeSelector();
+      });
+
+      // Enhanced zoom with touch support
+      const zoom = d3
+        .zoom()
+        .scaleExtent([0.2, 3])
+        .on("zoom", (event) => g.attr("transform", event.transform));
+
+      svg.call(zoom);
+
+      // Touch gesture support
+      if (isTouch) {
+        svg.on("touchstart", function (event) {
+          if (event.touches.length === 2) {
+            event.preventDefault();
+          }
+        });
+      }
+
+      // Zoom controls
+      document
+        .getElementById("zoom-in")
+        .addEventListener("click", () =>
+          svg.transition().duration(300).call(zoom.scaleBy, 1.3)
+        );
+      document
+        .getElementById("zoom-out")
+        .addEventListener("click", () =>
+          svg.transition().duration(300).call(zoom.scaleBy, 0.7)
+        );
+      document
+        .getElementById("zoom-reset")
+        .addEventListener("click", () =>
+          svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity)
+        );
+
+      // Filter buttons
+      document.querySelectorAll(".filter-btn").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          document
+            .querySelectorAll(".filter-btn")
+            .forEach((b) => b.classList.remove("active"));
+          this.classList.add("active");
+          const filter = this.dataset.filter;
+          if (filter === "all") {
+            edge.style("opacity", (d) =>
+              d.strength === "strong"
+                ? 0.9
+                : d.strength === "moderate"
+                ? 0.7
+                : 0.5
+            );
+            edgeHitArea.style("display", "block");
+          } else {
+            edge.style("opacity", (d) => (d.strength === filter ? 1 : 0.1));
+            edgeHitArea.style("display", (d) =>
+              d.strength === filter ? "block" : "none"
+            );
+          }
+        });
+      });
+
+      // Show node info function (keeping all original content)
+      function showNodeInfo(event, d) {
+        const panel = document.getElementById("info-panel");
+        const title = document.getElementById("panel-title");
+        const content = document.getElementById("panel-content");
+
+        title.textContent = d.name;
+
+        const nodeClusters = findNodeClusters(d.id);
+
+        let html = `
+                <div class="info-section">
+                    <div class="section-title">Overview</div>
+                    <div class="section-content">
+                        <div class="domain-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Layer</div>
+                                <div class="stat-value">${
+                                  d.layer === 0 ? "META" : `Layer ${d.layer}`
+                                }</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Total Concepts</div>
+                                <div class="stat-value">${d.concepts}</div>
+                            </div>
+                        </div>
+                        <div class="group-description">${d.description}</div>
+                    </div>
+                </div>
+            `;
+
+        if (nodeClusters.length > 0) {
+          html += `
+                    <div class="info-section">
+                        <div class="section-title">Clusters</div>
+                        <div class="section-content">
+                            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px;">This domain participates in:</div>
+                `;
+          nodeClusters.forEach((cluster) => {
+            const clusterName = cluster.replace(/_/g, " ");
+            const members = clusters[cluster].join(", ");
+            html += `<div class="cluster-item" onclick="highlightCluster('${cluster}')">
+                        <div style="font-size: 11px; color: #a78bfa; font-weight: 600;">🔗 ${clusterName}</div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 3px;">Members: ${members}</div>
+                        <div style="font-size: 10px; color: #6366f1; margin-top: 3px;">Click to highlight cluster</div>
+                    </div>`;
+          });
+          html += `</div></div>`;
+        }
+
+        html += `<div class="info-section"><div class="section-title">Subgroups & Concepts</div><div class="section-content">`;
+
+        d.groups.forEach((group, index) => {
+          html += `
+                    <div class="group-container">
+                        <div class="group-header" onclick="toggleConcepts(${index})">
+                            <div class="group-name">${String.fromCharCode(
+                              65 + index
+                            )}. ${group.name}</div>
+                            <div class="group-name-vi">${group.name_vi}</div>
+                            <div class="group-description">${
+                              group.description
+                            }</div>
+                            <div style="margin-top: 5px; font-size: 11px; color: #6366f1;">${
+                              group.count
+                            } concepts • Click to expand</div>
+                        </div>
+                        <div class="concepts-list" id="concepts-${index}">
+                            ${group.concepts
+                              .map(
+                                (c) =>
+                                  `<div class="concept-item" onclick="highlightConcept('${c}', '${d.id}')">• ${c}</div>`
+                              )
+                              .join("")}
+                        </div>
+                    </div>`;
+        });
+
+        const incoming = data.edges.filter(
+          (e) => (e.target.id || e.target) === d.id
+        );
+        const outgoing = data.edges.filter(
+          (e) => (e.source.id || e.source) === d.id
+        );
+
+        html += `</div></div><div class="info-section"><div class="section-title">Connections (${
+          incoming.length + outgoing.length
+        } total)</div><div class="section-content">`;
+
+        if (outgoing.length > 0) {
+          html += `<div style="margin-bottom: 15px;"><div style="font-size: 12px; color: #a78bfa; margin-bottom: 8px; font-weight: 600;">OUTGOING (${outgoing.length})</div>`;
+          outgoing.forEach((edge, idx) => {
+            const targetName = edge.target.id || edge.target;
+            const sourceName = edge.source.id || edge.source;
+            const strengthColor =
+              edge.strength === "strong"
+                ? "#10b981"
+                : edge.strength === "moderate"
+                ? "#f59e0b"
+                : "#8b5cf6";
+            const connectionId = `out-${idx}`;
+            html += `<div class="connection-item" style="border-left: 2px solid ${strengthColor};">
+                        <div class="connection-header" onclick="toggleConnectionDetails('${connectionId}')">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">→ ${targetName}</div>
+                                    <div style="font-size: 12px; color: #cbd5e1;">${
+                                      edge.label
+                                    }</div>
+                                    <div style="font-size: 10px; color: ${strengthColor}; margin-top: 2px;">${
+              edge.strength
+            } ${edge.type === "bidirectional" ? "(bidirectional)" : ""}</div>
+                                </div>
+                                <div style="color: #6366f1; font-size: 16px;"><span id="expand-icon-${connectionId}">▼</span></div>
+                            </div>
+                            <div class="expand-toggle"><span>Click to expand details</span></div>
+                        </div>
+                        <div class="connection-details" id="details-${connectionId}">
+                            <div style="margin-bottom: 10px;"><button onclick="highlightConnection('${sourceName}', '${targetName}', '${
+              edge.strength
+            }')" style="width: 100%; padding: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 4px; color: #e0e7ff; cursor: pointer; font-size: 11px;">🔦 Highlight on diagram</button></div>
+                            ${
+                              edge.type === "bidirectional" &&
+                              edge.forward &&
+                              edge.backward
+                                ? `<div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Forward (${sourceName} → ${targetName}):</div><div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; padding-left: 10px;">${edge.forward}</div><div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Backward (${targetName} → ${sourceName}):</div><div style="font-size: 12px; color: #cbd5e1; padding-left: 10px;">${edge.backward}</div>`
+                                : edge.description
+                                ? `<div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Description:</div><div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; padding-left: 10px;">${edge.description}</div>`
+                                : ""
+                            }
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(99, 102, 241, 0.1);"><div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Interaction Type:</div><div style="font-size: 12px; color: #cbd5e1; padding-left: 10px;">${
+                              edge.strength === "strong"
+                                ? "• Natural and constant interaction<br>• Core information pathway<br>• High frequency exchange"
+                                : edge.strength === "moderate"
+                                ? "• Regular interaction patterns<br>• Strategic planning cycles<br>• Medium frequency exchange"
+                                : "• Occasional interaction<br>• Specific conditions needed<br>• Low frequency exchange"
+                            }</div></div>
+                        </div></div>`;
+          });
+          html += `</div>`;
+        }
+
+        if (incoming.length > 0) {
+          html += `<div><div style="font-size: 12px; color: #a78bfa; margin-bottom: 8px; font-weight: 600;">INCOMING (${incoming.length})</div>`;
+          incoming.forEach((edge, idx) => {
+            const sourceName = edge.source.id || edge.source;
+            const targetName = edge.target.id || edge.target;
+            const strengthColor =
+              edge.strength === "strong"
+                ? "#10b981"
+                : edge.strength === "moderate"
+                ? "#f59e0b"
+                : "#8b5cf6";
+            const connectionId = `in-${idx}`;
+            html += `<div class="connection-item" style="border-left: 2px solid ${strengthColor};">
+                        <div class="connection-header" onclick="toggleConnectionDetails('${connectionId}')">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">← ${sourceName}</div>
+                                    <div style="font-size: 12px; color: #cbd5e1;">${
+                                      edge.label
+                                    }</div>
+                                    <div style="font-size: 10px; color: ${strengthColor}; margin-top: 2px;">${
+              edge.strength
+            } ${edge.type === "bidirectional" ? "(bidirectional)" : ""}</div>
+                                </div>
+                                <div style="color: #6366f1; font-size: 16px;"><span id="expand-icon-${connectionId}">▼</span></div>
+                            </div>
+                            <div class="expand-toggle"><span>Click to expand details</span></div>
+                        </div>
+                        <div class="connection-details" id="details-${connectionId}">
+                            <div style="margin-bottom: 10px;"><button onclick="highlightConnection('${sourceName}', '${targetName}', '${
+              edge.strength
+            }')" style="width: 100%; padding: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 4px; color: #e0e7ff; cursor: pointer; font-size: 11px;">🔦 Highlight on diagram</button></div>
+                            ${
+                              edge.type === "bidirectional" &&
+                              edge.forward &&
+                              edge.backward
+                                ? `<div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Forward (${sourceName} → ${targetName}):</div><div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; padding-left: 10px;">${edge.forward}</div><div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Backward (${targetName} → ${sourceName}):</div><div style="font-size: 12px; color: #cbd5e1; padding-left: 10px;">${edge.backward}</div>`
+                                : edge.description
+                                ? `<div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Description:</div><div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; padding-left: 10px;">${edge.description}</div>`
+                                : ""
+                            }
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(99, 102, 241, 0.1);"><div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">Interaction Type:</div><div style="font-size: 12px; color: #cbd5e1; padding-left: 10px;">${
+                              edge.strength === "strong"
+                                ? "• Natural and constant interaction<br>• Core information pathway<br>• High frequency exchange"
+                                : edge.strength === "moderate"
+                                ? "• Regular interaction patterns<br>• Strategic planning cycles<br>• Medium frequency exchange"
+                                : "• Occasional interaction<br>• Specific conditions needed<br>• Low frequency exchange"
+                            }</div></div>
+                        </div></div>`;
+          });
+          html += `</div>`;
+        }
+
+        html += `</div></div>`;
+
+        content.innerHTML = html;
+        panel.classList.remove("hidden");
+
+        // On mobile, close menu when panel opens
+        if (isMobile) {
+          mobileMenuOpen = false;
+          document.getElementById("controls").classList.add("mobile-hidden");
+          document.getElementById("mobile-menu-toggle").textContent = "☰";
+        }
+
+        // Adjust SVG width for desktop only
+        if (!isMobile) {
+          const newWidth = window.innerWidth - 400;
+          svg.attr("width", newWidth);
+          simulation.force("center", d3.forceCenter(newWidth / 2, height / 2));
+          simulation.alpha(0.1).restart();
+        }
+      }
+
+      // Show edge info function (keeping original)
+      function showEdgeInfo(event, d) {
+        const panel = document.getElementById("info-panel");
+        const title = document.getElementById("panel-title");
+        const content = document.getElementById("panel-content");
+        title.textContent = "Interaction Details";
+        const sourceId = d.source.id || d.source;
+        const targetId = d.target.id || d.target;
+        let html = `<div class="info-section">
+                    <div class="section-title">Connection</div>
+                    <div class="interaction-info">
+                        <div class="interaction-direction clickable-item" onclick="highlightConnection('${sourceId}', '${targetId}', '${
+          d.strength
+        }')" style="cursor: pointer;">
+                            <span class="domain-tag">${sourceId}</span>
+                            <span class="arrow-icon">${
+                              d.type === "bidirectional" ? "↔" : "→"
+                            }</span>
+                            <span class="domain-tag">${targetId}</span>
+                        </div>
+                        <div style="font-size: 10px; color: #6366f1; margin-top: 5px; text-align: center;">Click to highlight this connection</div>
+                        <div class="strength-badge strength-${
+                          d.strength
+                        }">${d.strength.toUpperCase()} INTERACTION</div>
+                    </div>
+                </div>
+                <div class="info-section">
+                    <div class="section-title">Interaction Type</div>
+                    <div class="section-content">
+                        <div style="font-size: 14px; color: #e0e7ff; margin-bottom: 10px;">${
+                          d.label
+                        }</div>
+                        <div style="font-size: 12px; color: #94a3b8;">Type: ${
+                          d.type === "bidirectional"
+                            ? "Bidirectional Flow"
+                            : "One-way Influence"
+                        }</div>
+                    </div>
+                </div>`;
+        if (d.type === "bidirectional" && d.forward && d.backward) {
+          html += `<div class="info-section">
+                        <div class="section-title">Bidirectional Details</div>
+                        <div class="section-content">
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">${
+                                  d.source.id || d.source
+                                } → ${d.target.id || d.target}</div>
+                                <div style="font-size: 13px; color: #cbd5e1;">${
+                                  d.forward
+                                }</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #a78bfa; margin-bottom: 5px;">${
+                                  d.target.id || d.target
+                                } → ${d.source.id || d.source}</div>
+                                <div style="font-size: 13px; color: #cbd5e1;">${
+                                  d.backward
+                                }</div>
+                            </div>
+                        </div>
+                    </div>`;
+        } else if (d.description) {
+          html += `<div class="info-section">
+                        <div class="section-title">Description</div>
+                        <div class="section-content"><div style="font-size: 13px; color: #cbd5e1; line-height: 1.5;">${d.description}</div></div>
+                    </div>`;
+        }
+        html += `<div class="info-section">
+                    <div class="section-title">Interaction Characteristics</div>
+                    <div class="section-content">
+                        <div style="font-size: 12px; color: #cbd5e1; line-height: 1.8;">
+                            ${
+                              d.strength === "strong"
+                                ? "• Natural and constant interaction<br>• Core information pathway<br>• High frequency exchange<br>• Essential for system function"
+                                : d.strength === "moderate"
+                                ? "• Regular interaction patterns<br>• Strategic planning cycles<br>• Medium frequency exchange<br>• Important for optimization"
+                                : "• Occasional interaction<br>• Specific conditions needed<br>• Low frequency exchange<br>• Enables special cases"
+                            }
+                        </div>
+                    </div>
+                </div>`;
+        content.innerHTML = html;
+        panel.classList.remove("hidden");
+
+        // On mobile, close menu when panel opens
+        if (isMobile) {
+          mobileMenuOpen = false;
+          document.getElementById("controls").classList.add("mobile-hidden");
+          document.getElementById("mobile-menu-toggle").textContent = "☰";
+        }
+      }
+
+      // All window functions (keeping original)
+      window.toggleConnectionDetails = function (connectionId) {
+        const details = document.getElementById(`details-${connectionId}`);
+        const icon = document.getElementById(`expand-icon-${connectionId}`);
+        if (details.classList.contains("expanded")) {
+          details.classList.remove("expanded");
+          icon.textContent = "▼";
+        } else {
+          details.classList.add("expanded");
+          icon.textContent = "▲";
+        }
+      };
+
+      window.toggleConcepts = function (index) {
+        document
+          .getElementById(`concepts-${index}`)
+          .classList.toggle("expanded");
+      };
+
+      window.closePanel = function () {
+        document.getElementById("info-panel").classList.add("hidden");
+        if (!isMobile) {
+          const newWidth = window.innerWidth;
+          svg.attr("width", newWidth);
+          simulation.force("center", d3.forceCenter(newWidth / 2, height / 2));
+          simulation.alpha(0.1).restart();
+        }
+      };
+
+      function showTooltip(event, text) {
+        if (!isTouch) {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.innerHTML = text;
+          const x = event.pageX || event.touches?.[0]?.pageX || 0;
+          const y = event.pageY || event.touches?.[0]?.pageY || 0;
+
+          // Adjust position for mobile to avoid going off screen
+          const tooltipWidth = 250; // max-width from CSS
+          const rightEdge = x + tooltipWidth + 10;
+          const leftPos =
+            rightEdge > window.innerWidth ? x - tooltipWidth - 10 : x + 10;
+
+          tooltip.style.left = leftPos + "px";
+          tooltip.style.top = y - 30 + "px";
+          tooltip.classList.add("show");
+        }
+      }
+
+      function hideTooltip() {
+        document.getElementById("tooltip").classList.remove("show");
+      }
+
+      // Initialize welcome content (keeping original)
+      document.addEventListener("DOMContentLoaded", () => {
+        const content = document.getElementById("panel-content");
+        const strongCount = data.edges.filter(
+          (e) => e.strength === "strong"
+        ).length;
+        const moderateCount = data.edges.filter(
+          (e) => e.strength === "moderate"
+        ).length;
+        const weakCount = data.edges.filter(
+          (e) => e.strength === "weak"
+        ).length;
+        const totalCount = data.edges.length;
+        content.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: #94a3b8;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">🧠</div>
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 10px;">Interactive Thinking Architecture</div>
+                    <div style="font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+                        Click on any node to explore its subgroups and concepts.<br>
+                        Click on edges to see interaction details.<br>
+                        Use controls to filter and zoom.
+                    </div>
+                    <div style="background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 12px; font-weight: 600; color: #a78bfa; margin-bottom: 10px;">🎯 INTERACTIVE FEATURES</div>
+                        <div style="text-align: left; font-size: 11px; line-height: 1.6;">
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• ${
+                              isMobile ? "Tap" : "Click"
+                            } nodes:</span> View detailed information</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• ${
+                              isMobile ? "Long press" : "Right-click"
+                            } edges:</span> Shows selection menu for overlapping connections</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• Edge Separation:</span> Adjust curve width (Normal/Wide/Extra) for overlapping edges</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• Layout Modes:</span> Switch between Force, Hierarchical, Circular, and Grid layouts</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• ${
+                              isMobile ? "Double tap" : "Double-click"
+                            } Canvas:</span> Reset all highlights</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #6366f1;">• Pin Button (📌):</span> Fix/unfix node positions for easier edge clicking</div>
+                            ${
+                              isMobile
+                                ? '<div style="margin-bottom: 5px;"><span style="color: #6366f1;">• Menu (☰):</span> Toggle controls and legend</div>'
+                                : ""
+                            }
+                            ${
+                              isMobile
+                                ? '<div style="margin-bottom: 5px;"><span style="color: #6366f1;">• Info (ℹ):</span> Toggle information panel</div>'
+                                : ""
+                            }
+                        </div>
+                    </div>
+                    ${
+                      !isMobile
+                        ? `<div style="background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 12px; font-weight: 600; color: #a78bfa; margin-bottom: 10px;">⌨️ KEYBOARD SHORTCUTS</div>
+                        <div style="text-align: left; font-size: 11px; line-height: 1.6;">
+                            <div style="margin-bottom: 3px;"><span style="color: #6366f1;">ESC:</span> Reset highlights & close dialogs</div>
+                            <div style="margin-bottom: 3px;"><span style="color: #6366f1;">Ctrl+F:</span> Focus search</div>
+                            <div style="margin-bottom: 3px;"><span style="color: #6366f1;">Ctrl+B:</span> Quick access bidirectional pairs</div>
+                            <div style="margin-bottom: 3px;"><span style="color: #6366f1;">1-4:</span> Switch layouts</div>
+                        </div>
+                    </div>`
+                        : ""
+                    }
+                    <div style="background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; font-weight: 600; color: #a78bfa; margin-bottom: 10px;">📊 NETWORK STATISTICS</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                            <div style="text-align: left;"><span style="color: #64748b;">Total Nodes:</span><span style="color: #e0e7ff; font-weight: 600;"> ${
+                              data.nodes.length
+                            }</span></div>
+                            <div style="text-align: left;"><span style="color: #64748b;">Total Edges:</span><span style="color: #e0e7ff; font-weight: 600;"> ${totalCount}</span></div>
+                            <div style="text-align: left;"><span style="color: #10b981;">● Strong:</span><span style="color: #e0e7ff; font-weight: 600;"> ${strongCount}</span></div>
+                            <div style="text-align: left;"><span style="color: #f59e0b;">● Moderate:</span><span style="color: #e0e7ff; font-weight: 600;"> ${moderateCount}</span></div>
+                            <div style="text-align: left;"><span style="color: #8b5cf6;">● Weak:</span><span style="color: #e0e7ff; font-weight: 600;"> ${weakCount}</span></div>
+                            <div style="text-align: left;"><span style="color: #64748b;">Total Concepts:</span><span style="color: #e0e7ff; font-weight: 600;"> ~930</span></div>
+                        </div>
+                    </div>
+                </div>`;
+        document.getElementById("info-panel").classList.remove("hidden");
+        if (isMobile) {
+          document.getElementById("mobile-panel-toggle").style.display = "flex";
+        } else {
+          document.getElementById("info-panel").classList.add("hidden");
+        }
+
+        //Ẩn menu mobile lúc khởi động
+        if (isMobile) {
+          document.getElementById("controls").classList.add("mobile-hidden");
+          document.getElementById("legend").classList.add("mobile-hidden");
+        }
+      });
+
+      // --- CÁC HÀM TƯƠNG TÁC VÀ LÀM NỔI BẬT (HIGHLIGHT) ---
+
+      function highlightConnection(sourceId, targetId, strength) {
+        resetHighlight();
+        const specificEdge = data.edges.find(
+          (e) =>
+            ((e.source.id || e.source) === sourceId &&
+              (e.target.id || e.target) === targetId) ||
+            ((e.source.id || e.source) === targetId &&
+              (e.target.id || e.target) === sourceId &&
+              e.type === "bidirectional")
+        );
+
+        node.style("opacity", (n) =>
+          n.id === sourceId || n.id === targetId ? 1 : 0.2
+        );
+        edge.style("opacity", (e) =>
+          e === specificEdge ||
+          (e.source.id === targetId && e.target.id === sourceId)
+            ? 1
+            : 0.1
+        );
+        edgeHitArea.style("display", (e) =>
+          e === specificEdge ||
+          (e.source.id === targetId && e.target.id === sourceId)
+            ? "block"
+            : "none"
+        );
+
+        d3.selectAll(".edge, .node").classed("highlighted-element", false);
+        node
+          .filter((n) => n.id === sourceId || n.id === targetId)
+          .classed("highlighted-element", true);
+        edge
+          .filter(
+            (e) =>
+              e === specificEdge ||
+              (e.source.id === targetId && e.target.id === sourceId)
+          )
+          .classed("highlighted-element", true);
+
+        showHighlightIndicator(
+          `Connection: ${sourceId} ↔ ${targetId} (${strength})`
+        );
+      }
+
+      window.highlightConnection = highlightConnection;
+
+      function highlightCluster(clusterName) {
+        resetHighlight();
+        const clusterNodes = new Set(clusters[clusterName]);
+        node.style("opacity", (n) => (clusterNodes.has(n.id) ? 1 : 0.2));
+        edge.style("opacity", (e) =>
+          clusterNodes.has(e.source.id) && clusterNodes.has(e.target.id)
+            ? 1
+            : 0.1
+        );
+        edgeHitArea.style("display", (e) =>
+          clusterNodes.has(e.source.id) && clusterNodes.has(e.target.id)
+            ? "block"
+            : "none"
+        );
+
+        d3.selectAll(".edge, .node").classed("highlighted-element", false);
+        node
+          .filter((n) => clusterNodes.has(n.id))
+          .classed("highlighted-element", true);
+        edge
+          .filter(
+            (e) =>
+              clusterNodes.has(e.source.id) && clusterNodes.has(e.target.id)
+          )
+          .classed("highlighted-element", true);
+
+        showHighlightIndicator(`Cluster: ${clusterName.replace(/_/g, " ")}`);
+      }
+
+      window.highlightCluster = highlightCluster;
+
+      function highlightConcept(conceptName, nodeId) {
+        resetHighlight();
+        highlightNode(nodeId, `Concept: ${conceptName}`);
+      }
+
+      window.highlightConcept = highlightConcept;
+
+      function highlightNode(nodeId, text) {
+        resetHighlight();
+        node.style("opacity", (n) => (n.id === nodeId ? 1 : 0.2));
+        edge.style("opacity", 0.1);
+        edgeHitArea.style("display", "none");
+
+        d3.selectAll(".node").classed("highlighted-element", false);
+        node
+          .filter((n) => n.id === nodeId)
+          .classed("highlighted-element", true);
+
+        showHighlightIndicator(text);
+      }
+
+      window.resetHighlight = function () {
+        node.style("opacity", 1);
+        edge.style("opacity", (d) =>
+          d.strength === "strong" ? 0.9 : d.strength === "moderate" ? 0.7 : 0.5
+        );
+        edgeHitArea.style("display", "block");
+        d3.selectAll(".highlighted-element").classed(
+          "highlighted-element",
+          false
+        );
+        document.getElementById("highlight-indicator").style.display = "none";
+        document.getElementById("node-search").value = "";
+      };
+
+      function showHighlightIndicator(text) {
+        const indicator = document.getElementById("highlight-indicator");
+        document.getElementById("highlight-text").textContent = text;
+        indicator.style.display = "block";
+      }
+
+      // --- BỘ CHỌN CẠNH (EDGE SELECTOR) ---
+
+      function handleEdgeClick(event, d) {
+        const sourceId = d.source.id || d.source;
+        const targetId = d.target.id || d.target;
+
+        const overlappingEdges = data.edges.filter((e) => {
+          const eSourceId = e.source.id || e.source;
+          const eTargetId = e.target.id || e.target;
+          return (
+            (eSourceId === sourceId && eTargetId === targetId) ||
+            (eSourceId === targetId && eTargetId === sourceId)
+          );
+        });
+
+        if (overlappingEdges.length > 1 && !isTouch) {
+          // On desktop, right-click is for selector
+          showEdgeInfo(event, d);
+        } else if (overlappingEdges.length > 1) {
+          // On touch, single tap opens selector
+          showEdgeSelector(event, overlappingEdges);
+        } else {
+          showEdgeInfo(event, d);
+        }
+      }
+
+      function showEdgeSelector(event, overlappingEdges) {
+        const selector = document.getElementById("edge-selector");
+        const optionsDiv = document.getElementById("edge-options");
+        optionsDiv.innerHTML = "";
+
+        overlappingEdges.forEach((edge) => {
+          const sourceId = edge.source.id || edge.source;
+          const targetId = edge.target.id || edge.target;
+          const option = document.createElement("div");
+          option.className = "edge-option";
+          option.innerHTML = `
+                        <div class="edge-option-direction">${sourceId} → ${targetId}</div>
+                        <div class="edge-option-label">${edge.label}</div>
+                        <div class="edge-option-strength" style="background: ${
+                          edgeColors[edge.strength]
+                        }">${edge.strength}</div>
+                    `;
+          option.onclick = () => {
+            showEdgeInfo(event, edge);
+            closeEdgeSelector();
+          };
+          optionsDiv.appendChild(option);
+        });
+
+        const x =
+          event.pageX || event.touches?.[0]?.pageX || window.innerWidth / 2;
+        const y =
+          event.pageY || event.touches?.[0]?.pageY || window.innerHeight / 2;
+
+        selector.style.display = "block";
+        selector.style.left = `${x}px`;
+        selector.style.top = `${y}px`;
+
+        // Adjust if off-screen
+        const rect = selector.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+          selector.style.left = `${window.innerWidth - rect.width - 20}px`;
+        }
+        if (rect.bottom > window.innerHeight) {
+          selector.style.top = `${window.innerHeight - rect.height - 20}px`;
+        }
+        if (rect.left < 0) {
+          selector.style.left = "10px";
+        }
+      }
+
+      window.closeEdgeSelector = function () {
+        document.getElementById("edge-selector").style.display = "none";
+      };
+
+      // --- CÁC BỘ LẮNG NGHE SỰ KIỆN (EVENT LISTENERS) ---
+
+      // Layout buttons
+      document.querySelectorAll(".layout-btn").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          document
+            .querySelectorAll(".layout-btn")
+            .forEach((b) => b.classList.remove("active"));
+          this.classList.add("active");
+          currentLayout = this.dataset.layout;
+          if (layouts[currentLayout]) {
+            layouts[currentLayout]();
+          }
+        });
+      });
+
+      // Separation buttons
+      document.querySelectorAll(".sep-btn").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          document
+            .querySelectorAll(".sep-btn")
+            .forEach((b) => b.classList.remove("active"));
+          this.classList.add("active");
+          edgeSeparation = this.dataset.separation;
+          updatePositions();
+        });
+      });
+
+      window.showBidirectionalPair = function (sourceId, targetId) {
+        highlightConnection(sourceId, targetId, "strong");
+      };
+
+      // Pin button
+      document
+        .getElementById("zoom-fix")
+        .addEventListener("click", function () {
+          positionsFixed = !positionsFixed;
+          this.style.background = positionsFixed
+            ? "rgba(99, 102, 241, 0.4)"
+            : "rgba(99, 102, 241, 0.1)";
+          if (positionsFixed) {
+            data.nodes.forEach((d) => {
+              d.fx = d.x;
+              d.fy = d.y;
+            });
+            simulation.stop();
+          } else {
+            if (currentLayout === "force") {
+              data.nodes.forEach((d) => {
+                d.fx = null;
+                d.fy = null;
+              });
+              simulation.alpha(1).restart();
+            }
+          }
+        });
+
+      // Search
+      window.searchNode = function (query) {
+        if (!query) {
+          resetHighlight();
+          return;
+        }
+        const lowerCaseQuery = query.toLowerCase();
+        const foundNode = data.nodes.find(
+          (n) =>
+            n.id.toLowerCase().includes(lowerCaseQuery) ||
+            n.name.toLowerCase().includes(lowerCaseQuery)
+        );
+        if (foundNode) {
+          highlightNode(foundNode.id, `Search result: ${foundNode.id}`);
+        }
+      };
+
+      // Keyboard shortcuts
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          resetHighlight();
+          closePanel();
+          closeEdgeSelector();
+        }
+        if (event.ctrlKey && event.key === "f") {
+          event.preventDefault();
+          document.getElementById("node-search").focus();
+        }
+      });
+
+      // Responsive resize
+      window.addEventListener("resize", () => {
+        const newWidth =
+          window.innerWidth -
+          (isMobile
+            ? 0
+            : document.getElementById("info-panel").classList.contains("hidden")
+            ? 0
+            : 400);
+        const newHeight = window.innerHeight;
+
+        svg.attr("width", newWidth).attr("height", newHeight);
+
+        simulation.force("center", d3.forceCenter(newWidth / 2, newHeight / 2));
+
+        // Re-apply static layouts on resize
+        if (currentLayout !== "force") {
+          layouts[currentLayout]();
+        } else {
+          simulation.alpha(0.3).restart();
+        }
+      });
+
+      // Panel dragging for mobile
+      if (isMobile) {
+        const panel = document.getElementById("info-panel");
+        const handle = document.querySelector(".panel-drag-handle");
+        let startY, startHeight;
+
+        handle.addEventListener("touchstart", (e) => {
+          startY = e.touches[0].clientY;
+          startHeight = panel.offsetHeight;
+          panel.style.transition = "none";
+        });
+
+        document.addEventListener("touchmove", (e) => {
+          if (startY === undefined) return;
+          const deltaY = e.touches[0].clientY - startY;
+          let newHeight = startHeight - deltaY;
+          newHeight = Math.max(
+            100,
+            Math.min(window.innerHeight * 0.9, newHeight)
+          );
+          panel.style.height = `${newHeight}px`;
+        });
+
+        document.addEventListener("touchend", () => {
+          startY = undefined;
+          panel.style.transition = "transform 0.3s ease, height 0.3s ease";
+        });
+      }
+    </script>
+  </body>
+</html>
