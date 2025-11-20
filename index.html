@@ -512,8 +512,14 @@
         margin-top: 3px;
       }
 
+      /* SỬA LẠI QUY TẮC NÀY */
       .highlighted-element {
         animation: pulse 2s infinite;
+      }
+
+      /* THÊM QUY TẮC MỚI NÀY */
+      body.is-zooming .highlighted-element {
+        animation: none; /* Tắt animation khi đang zoom */
       }
 
       @keyframes pulse {
@@ -756,6 +762,12 @@
         to {
           transform: rotate(360deg);
         }
+      }
+
+      svg.labels-visible .node-label {
+        display: block !important; /* Dùng !important để ghi đè quy tắc display:none trong media query */
+        font-size: 9px;
+        font-weight: 700;
       }
 
       /* RESPONSIVE STYLES */
@@ -2947,7 +2959,29 @@
       const zoom = d3
         .zoom()
         .scaleExtent([0.2, 3])
-        .on("zoom", (event) => g.attr("transform", event.transform));
+        .on("start", function (event) {
+          // ----> THÊM SỰ KIỆN NÀY VÀO: Khi bắt đầu zoom, thêm class vào body
+          d3.select("body").classed("is-zooming", true);
+        })
+        .on("zoom", (event) => {
+          // Phần này của bạn đã đúng, giữ nguyên
+          g.attr("transform", event.transform);
+
+          if (isMobile) {
+            const zoomLevel = event.transform.k;
+            const visibilityThreshold = 1.5;
+
+            if (zoomLevel > visibilityThreshold) {
+              svg.classed("labels-visible", true);
+            } else {
+              svg.classed("labels-visible", false);
+            }
+          }
+        })
+        .on("end", function (event) {
+          // Phần này của bạn cũng đã đúng, giữ nguyên
+          d3.select("body").classed("is-zooming", false);
+        });
 
       svg.call(zoom);
 
